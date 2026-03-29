@@ -1,0 +1,15 @@
+# --- DEVELOPMENT DOCKERFILE ---
+# This runs "npm start" for Hot Reloading
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm install --legacy-peer-deps
+
+# Copy the rest of the code
+COPY . .
+
+# Start the dev server
+CMD ["npm", "start"]

@@ -1,0 +1,9 @@
+# Ignore the child repositories (So they stay independent)
+CTFd/
+challenges/
+# Ignore persistent data
+.data/
+mysql_data/
+.env
+backup.sh
+.github/

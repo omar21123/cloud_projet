@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # --- 1. The Gateway (Main Entry Point) ---
+  gateway:
+    image: nginx:stable-alpine
+    container_name: secops-gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx-prod.conf:/etc/nginx/nginx.conf:ro
+      - certdata:/etc/letsencrypt
+      - webroot:/usr/share/nginx/html/webroot
+    depends_on:
+      - frontend
+      - ctfd-nginx
+    networks:
+      - secops-net
+
+  # --- 2. The Landing Page ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - secops-net
+
+  # --- 3. CTFd Stack ---
+
+  # The Application
+  ctfd:
+    build:
+      context: ./CTFd
+      dockerfile: Dockerfile
+    user: root
+    restart: unless-stopped
+    environment:
+      - UPLOAD_FOLDER=/var/uploads
+      - DATABASE_URL=mysql+pymysql://ctfd:${DB_PASSWORD}@db/ctfd
+      - REDIS_URL=redis://cache:6379
+      - WORKERS=1
+      - LOG_FOLDER=/var/log/CTFd
+      - ACCESS_LOG=-
+      - ERROR_LOG=-
+      - REVERSE_PROXY=true
+      - SECRET_KEY=${CTFD_SECRET_KEY}
+    volumes:
+      - .data/CTFd/logs:/var/log/CTFd
+      - .data/CTFd/uploads:/var/uploads
+    depends_on:
+      - db
+      - cache
+    networks:
+      - secops-net
+      - internal
+
+  # CTFd's Internal Nginx (Handles static assets for the CTF platform)
+  ctfd-nginx:
+    image: nginx:stable
+    restart: unless-stopped
+    volumes:
+      - ./CTFd/conf/nginx/http.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - ctfd
+    networks:
+      - secops-net
+
+  # Database
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - MARIADB_USER=ctfd
+      - MARIADB_PASSWORD=${DB_PASSWORD}
+      - MARIADB_DATABASE=ctfd
+      - MARIADB_AUTO_UPGRADE=1
+    volumes:
+      - .data/mysql:/var/lib/mysql
+    networks:
+      - internal
+    command: [mysqld, --character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci, --wait_timeout=28800, --log-warnings=0]
+
+  # Cache
+  cache:
+    image: redis:4
+    restart: unless-stopped
+    volumes:
+      - .data/redis:/data
+    networks:
+      - internal
+
+  # --- 4. Certificate Management (Certbot) ---
+  certbot:
+    image: certbot/certbot:latest
+    container_name: secops-certbot
+    restart: unless-stopped
+    volumes:
+      - certdata:/etc/letsencrypt
+      - webroot:/var/www/html
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
+    networks:
+      - secops-net
+
+networks:
+  secops-net:
+    driver: bridge
+  internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  certdata:
+    driver: local
+  webroot:
+    driver: local

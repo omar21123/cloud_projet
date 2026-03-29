@@ -1,0 +1,7 @@
+version: '3.8'
+
+services:
+  gateway:
+    volumes:
+      # 🟢 FORCE SWAP: Use the Local Config instead of Production Config
+      - ./nginx/nginx-local.conf:/etc/nginx/nginx.conf:ro
