@@ -1,7 +1,4 @@
-version: '3.8'
-
 services:
-  # --- 1. The Gateway (Main Entry Point) ---
   gateway:
     image: nginx:stable-alpine
     container_name: secops-gateway
@@ -10,46 +7,34 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx-prod.conf:/etc/nginx/nginx.conf:ro
-      - certdata:/etc/letsencrypt
-      - webroot:/usr/share/nginx/html/webroot
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/ssl/cloudflare/origin.crt:/etc/ssl/cloudflare/origin.crt:ro
+      - /etc/ssl/cloudflare/origin.key:/etc/ssl/cloudflare/origin.key:ro
     depends_on:
       - frontend
       - ctfd-nginx
+      - jenkins
     networks:
       - secops-net
 
-  # --- 2. The Landing Page ---
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+    container_name: secops-frontend
     restart: unless-stopped
     networks:
       - secops-net
 
-  # --- 3. CTFd Stack ---
-
-  # The Application
   ctfd:
     build:
       context: ./CTFd
-      dockerfile: Dockerfile
-    user: root
+    container_name: secops-ctfd
     restart: unless-stopped
     environment:
-      - UPLOAD_FOLDER=/var/uploads
       - DATABASE_URL=mysql+pymysql://ctfd:${DB_PASSWORD}@db/ctfd
       - REDIS_URL=redis://cache:6379
-      - WORKERS=1
-      - LOG_FOLDER=/var/log/CTFd
-      - ACCESS_LOG=-
-      - ERROR_LOG=-
-      - REVERSE_PROXY=true
       - SECRET_KEY=${CTFD_SECRET_KEY}
-    volumes:
-      - .data/CTFd/logs:/var/log/CTFd
-      - .data/CTFd/uploads:/var/uploads
+      - REVERSE_PROXY=true
     depends_on:
       - db
       - cache
@@ -57,63 +42,64 @@ services:
       - secops-net
       - internal
 
-  # CTFd's Internal Nginx (Handles static assets for the CTF platform)
   ctfd-nginx:
     image: nginx:stable
+    container_name: secops-ctfd-nginx
     restart: unless-stopped
     volumes:
-      - ./CTFd/conf/nginx/http.conf:/etc/nginx/nginx.conf
+      - ./CTFd/conf/nginx/http.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - ctfd
     networks:
       - secops-net
 
-  # Database
   db:
     image: mariadb:10.11
+    container_name: secops-db
     restart: unless-stopped
     environment:
       - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
       - MARIADB_USER=ctfd
       - MARIADB_PASSWORD=${DB_PASSWORD}
       - MARIADB_DATABASE=ctfd
-      - MARIADB_AUTO_UPGRADE=1
     volumes:
-      - .data/mysql:/var/lib/mysql
+      - dbdata:/var/lib/mysql
     networks:
       - internal
-    command: [mysqld, --character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci, --wait_timeout=28800, --log-warnings=0]
 
-  # Cache
   cache:
-    image: redis:4
+    image: redis:7
+    container_name: secops-redis
     restart: unless-stopped
     volumes:
-      - .data/redis:/data
+      - redisdata:/data
     networks:
       - internal
 
-  # --- 4. Certificate Management (Certbot) ---
-  certbot:
-    image: certbot/certbot:latest
-    container_name: secops-certbot
+  jenkins:
+    build:
+      context: ./jenkins-docker
+    container_name: jenkins
+    user: root
     restart: unless-stopped
+    environment:
+      - JENKINS_OPTS=--prefix=/jenkins
+      - JAVA_OPTS=-Xms256m -Xmx768m
+    ports:
+      - "50000:50000"
     volumes:
-      - certdata:/etc/letsencrypt
-      - webroot:/var/www/html
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/ubuntu/cloud_projet:/workspace/cloud_projet
     networks:
       - secops-net
 
 networks:
   secops-net:
-    driver: bridge
   internal:
-    driver: bridge
     internal: true
 
 volumes:
-  certdata:
-    driver: local
-  webroot:
-    driver: local
+  dbdata:
+  redisdata:
+  jenkins_home:
