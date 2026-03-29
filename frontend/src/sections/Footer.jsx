@@ -188,7 +188,7 @@ const Footer = () => {
               target={"_blank"}
               rel="dofollow noreferrer"
             >
-              Hachem Squalli Elhoussaini
+              Omar El Bouhsaini & badr el jouhari
             </a>
           </span>
         </Bottom>
