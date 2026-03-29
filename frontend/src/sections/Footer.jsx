@@ -188,7 +188,7 @@ const Footer = () => {
               target={"_blank"}
               rel="dofollow noreferrer"
             >
-              Omar El Bouhsaini 
+              Omar El Bouhsaini  GDNC
             </a>
           </span>
         </Bottom>
