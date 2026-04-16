@@ -70,28 +70,28 @@ pipeline {
                     echo '🔍 Scanning for hardcoded secrets...'
 
                     sh '''
-  			  docker run --rm \
-    			    -v /var/run/docker.sock:/var/run/docker.sock \
-    			    ${TRIVY_IMAGE} image \
-     			   --scanners vuln,secret \
-      			  --severity HIGH,CRITICAL \
-      			  --exit-code 0 \
-      			  --format json \
-       			 --quiet \
-     			   ${IMAGE_FRONTEND}:latest > trivy-vuln-report.json || true
-			'''
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v "${WORKSPACE}":/workspace \
+                            ${TRIVY_IMAGE} image \
+                            --scanners secret \
+                            --severity HIGH,CRITICAL \
+                            --exit-code 0 \
+                            --format json \
+                            --output /workspace/trivy-secret-pre.json \
+                            ${IMAGE_FRONTEND}:latest || true
+                    '''
 
                     sh '''
- 			   docker run --rm \
-      			  -v /var/run/docker.sock:/var/run/docker.sock \
-     			   ${TRIVY_IMAGE} image \
-     			   --scanners secret \
-       			   --severity HIGH,CRITICAL \
-     			   --exit-code 0 \
-     			   --format json \
-       			   --quiet \
-  			      ${IMAGE_FRONTEND}:latest > trivy-secret-pre.json || true
-			'''
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            ${TRIVY_IMAGE} image \
+                            --scanners secret \
+                            --severity HIGH,CRITICAL \
+                            --exit-code 1 \
+                            --quiet \
+                            ${IMAGE_FRONTEND}:latest
+                    '''
                 }
             }
         }
@@ -103,31 +103,48 @@ pipeline {
                     env.LAST_STAGE = 'Security Scan — Container Image'
                     echo '🔍 Deep vulnerability + secret scan...'
 
+                    // Pass 1: write JSON report via --output (bypasses stdout pollution)
                     sh '''
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v "${WORKSPACE}":/workspace \
                             ${TRIVY_IMAGE} image \
                             --scanners vuln,secret \
                             --severity HIGH,CRITICAL \
                             --exit-code 0 \
                             --format json \
-                            ${IMAGE_FRONTEND}:latest > trivy-vuln-report.json 2>/dev/null || true
+                            --output /workspace/trivy-vuln-report.json \
+                            ${IMAGE_FRONTEND}:latest || true
+
+                        echo "=== JSON file size ==="
+                        wc -c trivy-vuln-report.json || echo "File missing"
+                        echo "=== First 200 chars ==="
+                        head -c 200 trivy-vuln-report.json || true
                     '''
 
-                    // FIX: TOP_VULNS written to a separate file to avoid multiline-in-env-file parsing issues
+                    // Pass 2: parse the JSON report
                     writeFile file: 'trivy-parser.py', text: '''#!/usr/bin/env python3
 import json, sys, os
 
 path = "trivy-vuln-report.json"
-if not os.path.exists(path):
+if not os.path.exists(path) or os.path.getsize(path) == 0:
     with open("trivy-summary.env", "w") as f:
         f.write("CRITICAL_COUNT=0\\nHIGH_COUNT=0\\nSECRETS_FOUND=0\\n")
     with open("trivy-top-vulns.txt", "w") as f:
         f.write("  None detected")
+    print("[Trivy Parser] Report missing or empty — defaulting to 0")
     sys.exit(0)
 
 with open(path) as f:
-    data = json.load(f)
+    try:
+        data = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"[Trivy Parser] JSON parse error: {e}")
+        with open("trivy-summary.env", "w") as f2:
+            f2.write("CRITICAL_COUNT=0\\nHIGH_COUNT=0\\nSECRETS_FOUND=0\\n")
+        with open("trivy-top-vulns.txt", "w") as f2:
+            f2.write("  None detected")
+        sys.exit(0)
 
 critical, high, secrets = 0, 0, 0
 top_vulns = []
@@ -146,13 +163,11 @@ for result in data.get("Results", []):
     for s in result.get("Secrets") or []:
         secrets += 1
 
-# Write numeric values to .env file (no multiline values)
 with open("trivy-summary.env", "w") as f:
     f.write(f"CRITICAL_COUNT={critical}\\n")
     f.write(f"HIGH_COUNT={high}\\n")
     f.write(f"SECRETS_FOUND={secrets}\\n")
 
-# Write top vulns to a separate plain text file
 with open("trivy-top-vulns.txt", "w") as f:
     f.write("\\n".join(top_vulns) if top_vulns else "  None detected")
 
@@ -168,6 +183,7 @@ print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
                         cat trivy-top-vulns.txt || echo "No vulns file"
                     '''
 
+                    // Pass 3: enforce gate — blocks deployment if findings exist
                     def scanExit = sh(
                         script: '''
                             docker run --rm \
@@ -176,6 +192,7 @@ print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
                                 --scanners vuln,secret \
                                 --severity HIGH,CRITICAL \
                                 --exit-code 1 \
+                                --quiet \
                                 ${IMAGE_FRONTEND}:latest
                         ''',
                         returnStatus: true
@@ -190,35 +207,35 @@ print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
 
     // ─────────────────────────────────────────────
     post {
-    failure {
-        script {
-            def failStage = env.LAST_STAGE ?: 'Unknown'
-            try {
-                def critical = "0"
-                def high     = "0"
-                def secrets  = "0"
-                def topVulns = "  None detected"
+        failure {
+            script {
+                def failStage = env.LAST_STAGE ?: 'Unknown'
+                try {
+                    def critical = "0"
+                    def high     = "0"
+                    def secrets  = "0"
+                    def topVulns = "  None detected"
 
-                if (fileExists('trivy-summary.env')) {
-                    readFile('trivy-summary.env').trim().split('\n').each { line ->
-                        def kv = line.split('=', 2)
-                        if (kv.size() == 2) {
-                            switch (kv[0].trim()) {
-                                case 'CRITICAL_COUNT': critical = kv[1].trim(); break
-                                case 'HIGH_COUNT':     high     = kv[1].trim(); break
-                                case 'SECRETS_FOUND':  secrets  = kv[1].trim(); break
+                    if (fileExists('trivy-summary.env')) {
+                        readFile('trivy-summary.env').trim().split('\n').each { line ->
+                            def kv = line.split('=', 2)
+                            if (kv.size() == 2) {
+                                switch (kv[0].trim()) {
+                                    case 'CRITICAL_COUNT': critical = kv[1].trim(); break
+                                    case 'HIGH_COUNT':     high     = kv[1].trim(); break
+                                    case 'SECRETS_FOUND':  secrets  = kv[1].trim(); break
+                                }
                             }
                         }
                     }
-                }
 
-                if (fileExists('trivy-top-vulns.txt')) {
-                    topVulns = readFile('trivy-top-vulns.txt').trim()
-                    if (topVulns.isEmpty()) { topVulns = "  None detected" }
-                }
+                    if (fileExists('trivy-top-vulns.txt')) {
+                        topVulns = readFile('trivy-top-vulns.txt').trim()
+                        if (topVulns.isEmpty()) { topVulns = "  None detected" }
+                    }
 
-                def tripleBacktick = '```'
-                def msg = """🚨 *ALERTE SÉCURITÉ — JENKINS* 🚨
+                    def tripleBacktick = '```'
+                    def msg = """🚨 *ALERTE SÉCURITÉ — JENKINS* 🚨
 
 📦 *Projet :* `${env.JOB_NAME}`
 🔢 *Build :* #${env.BUILD_NUMBER}
@@ -238,40 +255,39 @@ ${topVulns}
 ${tripleBacktick}
 🔗 [Voir les logs complets](${env.BUILD_URL}console)"""
 
-                withCredentials([
-                    string(credentialsId: "${TELEGRAM_CREDS_ID}", variable: 'BOT_TOKEN'),
-                    string(credentialsId: "${TELEGRAM_CHAT_ID}",  variable: 'CHAT_ID')
-                ]) {
-                    writeFile file: 'telegram-msg.txt', text: msg
-                    sh '''
-                        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-                            --data-urlencode "chat_id=${CHAT_ID}" \
-                            --data-urlencode "parse_mode=Markdown" \
-                            --data-urlencode "disable_web_page_preview=true" \
-                            --data-urlencode "text@./telegram-msg.txt" || echo "Telegram send failed"
-                    '''
+                    withCredentials([
+                        string(credentialsId: "${TELEGRAM_CREDS_ID}", variable: 'BOT_TOKEN'),
+                        string(credentialsId: "${TELEGRAM_CHAT_ID}",  variable: 'CHAT_ID')
+                    ]) {
+                        writeFile file: 'telegram-msg.txt', text: msg
+                        sh '''
+                            curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+                                --data-urlencode "chat_id=${CHAT_ID}" \
+                                --data-urlencode "parse_mode=Markdown" \
+                                --data-urlencode "disable_web_page_preview=true" \
+                                --data-urlencode "text@./telegram-msg.txt" || echo "Telegram send failed"
+                        '''
+                    }
+                    echo "✅ Telegram notification sent"
+                } catch (Exception e) {
+                    echo "⚠️ Telegram send error: ${e.getMessage()}"
                 }
-                echo "✅ Telegram notification sent"
-            } catch (Exception e) {
-                echo "⚠️ Telegram send error: ${e.getMessage()}"
             }
         }
-    }
 
-    success {
-        script {
-            echo "✅ Build successful! No HIGH/CRITICAL issues found."
+        success {
+            script {
+                echo "✅ Build successful! No HIGH/CRITICAL issues found."
+            }
+        }
+
+        always {
+            sh '''
+                rm -f .env trivy-vuln-report.json trivy-secret-pre.json \
+                      trivy-summary.env trivy-top-vulns.txt \
+                      trivy-parser.py telegram-msg.txt || true
+                docker image prune -f || true
+            '''
         }
     }
-
-    always {
-        // Cleanup runs last — after failure/success blocks have read the files
-        sh '''
-            rm -f .env trivy-vuln-report.json trivy-secret-pre.json \
-                  trivy-summary.env trivy-top-vulns.txt \
-                  trivy-parser.py telegram-msg.txt || true
-            docker image prune -f || true
-        '''
-    }
-}
 }
