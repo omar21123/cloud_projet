@@ -217,7 +217,8 @@ print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
                         if (topVulns.isEmpty()) { topVulns = "  None detected" }
                     }
 
-                    def msg = """🚨 *ALERTE SÉCURITÉ — JENKINS* 🚨
+def tripleBacktick = '```'
+def msg = """🚨 *ALERTE SÉCURITÉ — JENKINS* 🚨
 
 📦 *Projet :* `${env.JOB_NAME}`
 🔢 *Build :* #${env.BUILD_NUMBER}
@@ -232,11 +233,10 @@ print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
 🔑 Secrets   : *${secrets}*
 
 📋 *Top vulnérabilités (CVE · package · fix):*
-\`\`\`
+${tripleBacktick}
 ${topVulns}
-\`\`\`
+${tripleBacktick}
 🔗 [Voir les logs complets](${env.BUILD_URL}console)"""
-
                     withCredentials([
                         string(credentialsId: "${TELEGRAM_CREDS_ID}", variable: 'BOT_TOKEN'),
                         string(credentialsId: "${TELEGRAM_CHAT_ID}",  variable: 'CHAT_ID')
