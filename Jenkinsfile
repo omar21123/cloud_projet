@@ -1,10 +1,11 @@
 pipeline {
     agent any
+
     environment {
         COMPOSE_PROJECT   = "cloud_projet"
         COMPOSE_FILE      = "docker-compose.prod.yml"
         IMAGE_FRONTEND    = "cloud_projet-frontend"
-        TRIVY_IMAGE       = "ghcr.io/aquasecurity/trivy:0.51.4"  // pinned = no re-pull on :latest
+        TRIVY_IMAGE       = "ghcr.io/aquasecurity/trivy:0.51.4"
         TELEGRAM_CREDS_ID = 'TELEGRAM_TOKEN_ID'
         TELEGRAM_CHAT_ID  = 'TELEGRAM_CHAT_ID'
     }
@@ -36,10 +37,9 @@ pipeline {
         stage('Security Scan — Secrets (pre-build)') {
             steps {
                 script {
-		    env.LAST_STAGE = env.STAGE_NAME
+                    env.LAST_STAGE = env.STAGE_NAME
                     echo '🔍 Scanning for hardcoded secrets...'
 
-                    // Pass 1: capture JSON quietly
                     sh '''
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
@@ -51,7 +51,6 @@ pipeline {
                             ${IMAGE_FRONTEND}:latest > trivy-secret-pre.json 2>/dev/null || true
                     '''
 
-                    // Pass 2: enforce gate (fails stage if secrets found)
                     sh '''
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
@@ -76,6 +75,7 @@ pipeline {
                 ENV_DATABASE_URL     = credentials('DATABASE_URL')
                 ENV_REDIS_URL        = credentials('REDIS_URL')
             }
+
             steps {
                 sh '''
                     echo "DB_ROOT_PASSWORD=${ENV_DB_ROOT_PASSWORD}" >  .env
@@ -96,10 +96,9 @@ pipeline {
         stage('Security Scan — Container Image') {
             steps {
                 script {
-		    env.LAST_STAGE = env.STAGE_NAME
+                    env.LAST_STAGE = env.STAGE_NAME
                     echo '🔍 Deep vulnerability + secret scan...'
 
-                    // Pass 1: JSON report (never blocks)
                     sh '''
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
@@ -111,10 +110,7 @@ pipeline {
                             ${IMAGE_FRONTEND}:latest > trivy-vuln-report.json 2>/dev/null || true
                     '''
 
-                    // Pass 2: parse JSON → trivy-summary.env (used by Telegram)
-                    
-// Pass 2: parse JSON → trivy-summary.env
-writeFile file: 'trivy-parser.py', text: """
+                    writeFile file: 'trivy-parser.py', text: """
 import json, sys, os
 
 path = 'trivy-vuln-report.json'
@@ -154,49 +150,9 @@ with open('trivy-summary.env','w') as f:
 
 print(f'[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}')
 """
-sh 'python3 trivy-parser.py'
-import json, sys, os
 
-path = "trivy-vuln-report.json"
-if not os.path.exists(path):
-    open("trivy-summary.env","w").write(
-        "CRITICAL_COUNT=0\nHIGH_COUNT=0\nSECRETS_FOUND=0\nTOP_VULNS=None\n"
-    )
-    sys.exit(0)
+                    sh 'python3 trivy-parser.py'
 
-with open(path) as f:
-    data = json.load(f)
-
-critical, high, secrets = 0, 0, 0
-top_vulns = []
-
-for result in data.get("Results", []):
-    for v in result.get("Vulnerabilities") or []:
-        sev = v.get("Severity","")
-        if sev == "CRITICAL": critical += 1
-        elif sev == "HIGH":   high     += 1
-        if sev in ("CRITICAL","HIGH") and len(top_vulns) < 5:
-            cve  = v.get("VulnerabilityID", "?")
-            pkg  = v.get("PkgName",         "?")
-            ver  = v.get("InstalledVersion","?")
-            fix  = v.get("FixedVersion",    "no fix available")
-            top_vulns.append(f"  • {cve} | {pkg} {ver} → fix: {fix}")
-    for s in result.get("Secrets") or []:
-        secrets += 1
-
-summary = "\n".join(top_vulns) if top_vulns else "  None detected"
-
-with open("trivy-summary.env","w") as f:
-    f.write(f"CRITICAL_COUNT={critical}\n")
-    f.write(f"HIGH_COUNT={high}\n")
-    f.write(f"SECRETS_FOUND={secrets}\n")
-    f.write(f"TOP_VULNS={summary}\n")
-
-print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
-PYEOF
-                    '''
-
-                    // Pass 3: enforce gate — fails build if findings exist
                     def scanExit = sh(
                         script: '''
                             docker run --rm \
@@ -209,6 +165,7 @@ PYEOF
                         ''',
                         returnStatus: true
                     )
+
                     if (scanExit != 0) {
                         error("❌ Trivy found HIGH/CRITICAL issues — deployment blocked.")
                     }
@@ -221,9 +178,9 @@ PYEOF
     post {
         failure {
             script {
-		env.LAST_STAGE = env.STAGE_NAME
+                env.LAST_STAGE = env.STAGE_NAME
+
                 try {
-                    // ── Read parsed Trivy summary ──────────────────────
                     def critical  = "N/A"
                     def high      = "N/A"
                     def secrets   = "N/A"
@@ -231,7 +188,7 @@ PYEOF
                     def failStage = env.LAST_STAGE ?: "Unknown"
 
                     if (fileExists('trivy-summary.env')) {
-                        readFile('trivy-summary.env').trim().split('\n').each { line ->
+                        readFile('trivy-summary.env').trim().split('\\n').each { line ->
                             def kv = line.split('=', 2)
                             if (kv.size() == 2) {
                                 switch (kv[0].trim()) {
@@ -244,7 +201,6 @@ PYEOF
                         }
                     }
 
-                    // ── Build rich Telegram message ────────────────────
                     def msg = """\
 🚨 *ALERTE SÉCURITÉ — JENKINS* 🚨
 
@@ -268,16 +224,17 @@ ${topVulns}
                         string(credentialsId: "${TELEGRAM_CREDS_ID}", variable: 'BOT_TOKEN'),
                         string(credentialsId: "${TELEGRAM_CHAT_ID}",  variable: 'CHAT_ID')
                     ]) {
-                        // Write message to file → avoids shell escaping nightmares
                         writeFile file: 'telegram-msg.txt', text: msg
+
                         sh '''
                             curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-                                --data-urlencode "chat_id=${CHAT_ID}"           \
-                                --data-urlencode "parse_mode=Markdown"          \
+                                --data-urlencode "chat_id=${CHAT_ID}" \
+                                --data-urlencode "parse_mode=Markdown" \
                                 --data-urlencode "disable_web_page_preview=true" \
                                 --data-urlencode "text@telegram-msg.txt"
                         '''
                     }
+
                 } catch (Exception e) {
                     echo "⚠️ Telegram send error: ${e.getMessage()}"
                 }
