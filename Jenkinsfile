@@ -52,7 +52,8 @@ pipeline {
                 echo "DATABASE_URL=${ENV_DATABASE_URL}" >> .env
                 echo "REDIS_URL=${ENV_REDIS_URL}" >> .env
 
-                docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d --build frontend
+		docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} build --no-cache frontend
+		docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d frontend
                 '''
             }
         }
