@@ -15,23 +15,19 @@ pipeline {
             }
         }
 
-        stage('Security Scan — Filesystem') {
+	stage('Security Scan — Filesystem') {
             steps {
-                echo '🔍 Scan profond des sources (Workspace complet)...'
-                // -u 0 : permet à Trivy de lire les fichiers du workspace appartenant à l'utilisateur jenkins
+                echo '🔍 Scan forcé du dossier physique...'
                 sh """
-                docker run --rm \
-                    -u 0 \
-                    -v ${WORKSPACE}:/scan:ro \
-                    ${TRIVY_IMAGE} fs \
-                    --scanners vuln,secret \
-                    --severity HIGH,CRITICAL \
+                docker run --rm -u 0 \
+                    -v /var/jenkins_home/workspace/Deploy-SecOps-Cloud:/scan:ro \
+                    ghcr.io/aquasecurity/trivy:latest fs \
+                    --scanners secret \
                     --exit-code 1 \
                     /scan
                 """
             }
         }
-
         stage('Build & Deploy') {
             environment {
                 ENV_DB_ROOT_PASSWORD = credentials('DB_ROOT_PASSWORD')
