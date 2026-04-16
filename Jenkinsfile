@@ -20,7 +20,6 @@ pipeline {
 
         stage('Build & Deploy') {
             environment {
-                // Récupération sécurisée des credentials Jenkins
                 DB_ROOT = credentials('DB_ROOT_PASSWORD')
                 DB_PASS = credentials('DB_PASSWORD')
                 CTFD_KEY = credentials('CTFD_SECRET_KEY')
@@ -51,12 +50,10 @@ pipeline {
             steps {
                 echo '🔍 Scan profond de l image (Vulnerabilities & Secrets)...'
                 script {
-                    // On ajoute --skip-java-db-update pour économiser l'espace disque (850Mo)
+                    // Suppression de --skip-db-update pour assurer le premier run réussi
                     sh """
                     docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                         ${TRIVY_IMAGE} image \
-                        --skip-db-update \
-                        --skip-java-db-update \
                         --severity HIGH,CRITICAL \
                         --format json --output trivy-report.json \
                         ${IMAGE_FRONTEND}:latest
@@ -70,7 +67,6 @@ pipeline {
                 echo '🚀 Lancement du scan dynamique (DAST)...'
                 sh """
                 mkdir -p zap-reports
-                # chmod pour s'assurer que Jenkins peut lire le rapport généré par le container ZAP
                 chmod 777 zap-reports
                 docker run --rm -v \$(pwd)/zap-reports:/zap/wrk/:rw --network="host" \
                     ${ZAP_IMAGE} zap-baseline.py \
@@ -88,15 +84,26 @@ pipeline {
                 string(credentialsId: "${TELEGRAM_CHAT_ID}", variable: 'CHAT_ID')
             ]) {
                 script {
-                    def trivyCount = sh(script: "grep -o '\"Severity\":\"' trivy-report.json | wc -l || echo 0", returnStdout: true).trim()
-                    sh """
-                    MESSAGE="✅ *PIPELINE RÉUSSI* ✅%0A%0A*App :* ${IMAGE_FRONTEND}%0A*Trivy Alertes :* ${trivyCount} (High/Critical)%0A*Statut :* Déploiement actif sur le port 80."
+                    // Extraction des stats de sécurité
+                    def criticals = sh(script: "grep -o '\"Severity\":\"CRITICAL\"' trivy-report.json | wc -l || echo 0", returnStdout: true).trim()
+                    def highs = sh(script: "grep -o '\"Severity\":\"HIGH\"' trivy-report.json | wc -l || echo 0", returnStdout: true).trim()
                     
-                    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-                        -d "chat_id=${CHAT_ID}" \
-                        -d "parse_mode=Markdown" \
-                        -d "text=\${MESSAGE}"
-                    """
+                    def message = """
+🚀 *DEPLOYMENT SUCCESSFUL* 🚀
+━━━━━━━━━━━━━━━━━━━━
+📦 *Projet:* `${COMPOSE_PROJECT}`
+🏗️ *Build:* #${BUILD_NUMBER}
+🌐 *Application:* `${IMAGE_FRONTEND}`
+
+🛡️ *SECURITY SUMMARY (Trivy)*
+🛑 *Critical:* ${criticals}
+⚠️ *High:* ${highs}
+
+✅ *Status:* Application déployée et fonctionnelle.
+🔗 *Console:* [Voir sur Jenkins](${env.BUILD_URL})
+━━━━━━━━━━━━━━━━━━━━
+"""
+                    sh "curl -s -X POST 'https://api.telegram.org/bot${BOT_TOKEN}/sendMessage' -d 'chat_id=${CHAT_ID}' -d 'parse_mode=Markdown' -d 'text=${message}'"
                 }
             }
         }
@@ -107,32 +114,27 @@ pipeline {
                 string(credentialsId: "${TELEGRAM_CHAT_ID}", variable: 'CHAT_ID')
             ]) {
                 script {
-                    // 1. Envoi du message texte d'alerte
-                    sh """
-                    MESSAGE="🚨 *ALERTE ÉCHEC SÉCURITÉ* 🚨%0A%0A*Build :* #${BUILD_NUMBER}%0A*Action :* Le pipeline a échoué. Vérifiez les rapports ci-joints."
-                    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-                        -d "chat_id=${CHAT_ID}" \
-                        -d "parse_mode=Markdown" \
-                        -d "text=\${MESSAGE}"
-                    """
+                    def message = """
+🚨 *PIPELINE FAILED* 🚨
+━━━━━━━━━━━━━━━━━━━━
+❌ *Build:* #${BUILD_NUMBER}
+🛑 *Projet:* `${COMPOSE_PROJECT}`
+⚠️ *Alerte:* Le déploiement ou les scans ont échoué.
 
-                    // 2. Envoi du rapport Trivy (Vérification si le fichier existe)
+ℹ️ *Action Requise:* Vérifiez les rapports ci-joints ou les logs Jenkins.
+🔗 *Logs:* [Accéder au build](${env.BUILD_URL})
+━━━━━━━━━━━━━━━━━━━━
+"""
+                    // 1. Message d'alerte
+                    sh "curl -s -X POST 'https://api.telegram.org/bot${BOT_TOKEN}/sendMessage' -d 'chat_id=${CHAT_ID}' -d 'parse_mode=Markdown' -d 'text=${message}'"
+
+                    // 2. Envoi des rapports si disponibles
                     sh """
                     if [ -f trivy-report.json ]; then
-                        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
-                            -F "chat_id=${CHAT_ID}" \
-                            -F "document=@trivy-report.json" \
-                            -F "caption=📄 Rapport Trivy (JSON)"
+                        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" -F "chat_id=${CHAT_ID}" -F "document=@trivy-report.json" -F "caption=📄 Rapport Trivy (JSON)"
                     fi
-                    """
-
-                    // 3. Envoi du rapport OWASP ZAP (HTML - Interactif et visuel)
-                    sh """
                     if [ -f zap-reports/zap_report.html ]; then
-                        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
-                            -F "chat_id=${CHAT_ID}" \
-                            -F "document=@zap-reports/zap_report.html" \
-                            -F "caption=🛡️ Rapport OWASP ZAP (DAST)"
+                        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" -F "chat_id=${CHAT_ID}" -F "document=@zap-reports/zap_report.html" -F "caption=🛡️ Rapport OWASP ZAP (HTML)"
                     fi
                     """
                 }
@@ -141,14 +143,8 @@ pipeline {
 
         always {
             echo "Nettoyage et Archivage..."
-            // Archivage dans Jenkins pour garder une trace historique
             archiveArtifacts artifacts: 'zap-reports/zap_report.html, trivy-report.json', allowEmptyArchive: true
-            
-            // Nettoyage disque indispensable sur ton EC2
-            sh '''
-            rm -f .env
-            docker image prune -f
-            '''
+            sh 'rm -f .env && docker image prune -f'
         }
     }
 }
