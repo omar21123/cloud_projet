@@ -188,7 +188,7 @@ const Footer = () => {
               target={"_blank"}
               rel="dofollow noreferrer"
             >
-              boogeyman2
+              boogeyman pro max
             </a>
           </span>
         </Bottom>
