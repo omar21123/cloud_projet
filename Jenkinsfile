@@ -41,9 +41,8 @@ pipeline {
                 docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} build --no-cache frontend
                 docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d frontend
                 '''
-                // On attend que l'application soit bien démarrée
-                echo "Attente du démarrage de l'application..."
-                sleep 10
+                echo "Attente du démarrage de l'application (15s)..."
+                sleep 15
             }
         }
 
@@ -51,7 +50,7 @@ pipeline {
             steps {
                 echo '🔍 Scan profond de l image (Vulnerabilities & Secrets)...'
                 script {
-                    // On génère un résumé JSON pour Telegram mais on bloque le build si HIGH/CRITICAL
+                    // On sort le résultat en JSON pour le traitement post-build
                     sh """
                     docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                         ${TRIVY_IMAGE} image \
@@ -68,13 +67,13 @@ pipeline {
                 echo '🚀 Lancement du scan dynamique (DAST)...'
                 sh """
                 mkdir -p zap-reports
+                chmod 777 zap-reports
                 docker run --rm -v \$(pwd)/zap-reports:/zap/wrk/:rw --network="host" \
+                    -u \$(id -u):\$(id -g) \
                     ${ZAP_IMAGE} zap-baseline.py \
                     -t http://localhost:80 \
                     -r zap_report.html || true
                 """
-                // Note: '|| true' évite de bloquer le build si ZAP trouve des alertes mineures
-                // Tu peux l'enlever pour être plus strict.
             }
         }
     }
@@ -86,12 +85,19 @@ pipeline {
                 string(credentialsId: "${TELEGRAM_CHAT_ID}", variable: 'CHAT_ID')
             ]) {
                 script {
-                    def trivyCount = sh(script: "grep -o '\"Severity\":\"' trivy-report.json | wc -l", returnStdout: true).trim()
+                    // On remplace les underscores par des tirets pour éviter l'erreur de parsing Markdown de Telegram
+                    def safeApp = IMAGE_FRONTEND.replace("_", "-")
+                    def trivyCount = "0"
+                    
+                    if (fileExists('trivy-report.json')) {
+                        trivyCount = sh(script: "grep -o '\"Severity\":\"' trivy-report.json | wc -l", returnStdout: true).trim()
+                    }
+
                     sh """
-                    MESSAGE="✅ *PIPELINE RÉUSSI* ✅%0A%0A"
-                    MESSAGE="\${MESSAGE}*App :* ${IMAGE_FRONTEND}%0A"
-                    MESSAGE="\${MESSAGE}*Trivy Alertes :* ${trivyCount} (High/Critical)%0A"
-                    MESSAGE="\${MESSAGE}*ZAP Report :* Généré (HTML)%0A"
+                    MESSAGE="✅ *PIPELINE RÉUSSI* %0A%0A"
+                    MESSAGE="\${MESSAGE}*App:* ${safeApp}%0A"
+                    MESSAGE="\${MESSAGE}*Trivy Alertes:* ${trivyCount} (H/C)%0A"
+                    MESSAGE="\${MESSAGE}*DAST Report:* Généré"
                     
                     curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
                         -d "chat_id=${CHAT_ID}" \
@@ -107,22 +113,25 @@ pipeline {
                 string(credentialsId: "${TELEGRAM_CREDS_ID}", variable: 'BOT_TOKEN'),
                 string(credentialsId: "${TELEGRAM_CHAT_ID}", variable: 'CHAT_ID')
             ]) {
-                sh '''
-                MESSAGE="🚨 *ALERTE ÉCHEC SÉCURITÉ* 🚨%0A%0A"
-                MESSAGE="${MESSAGE}*Build :* #${BUILD_NUMBER}%0A"
-                MESSAGE="${MESSAGE}*Action :* Le scan Trivy ou ZAP a détecté des failles critiques.%0A"
-                MESSAGE="${MESSAGE}*Lien :* ${BUILD_URL}"
+                script {
+                    def safeJob = JOB_NAME.replace("_", "-")
+                    sh """
+                    MESSAGE="🚨 *ALERTE ÉCHEC SÉCURITÉ* %0A%0A"
+                    MESSAGE="\${MESSAGE}*Job:* ${safeJob}%0A"
+                    MESSAGE="\${MESSAGE}*Build:* #${BUILD_NUMBER}%0A"
+                    MESSAGE="\${MESSAGE}*Action:* Vérifiez les logs Trivy/ZAP."
 
-                curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-                    -d "chat_id=${CHAT_ID}" \
-                    -d "parse_mode=Markdown" \
-                    -d "text=${MESSAGE}"
-                '''
+                    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+                        -d "chat_id=${CHAT_ID}" \
+                        -d "parse_mode=Markdown" \
+                        -d "text=\${MESSAGE}"
+                    """
+                }
             }
         }
 
         always {
-            echo "Archivage des rapports..."
+            echo "Nettoyage et archivage..."
             archiveArtifacts artifacts: 'zap-reports/zap_report.html, trivy-report.json', allowEmptyArchive: true
             sh 'rm -f .env'
         }
