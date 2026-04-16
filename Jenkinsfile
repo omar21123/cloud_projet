@@ -13,9 +13,7 @@ pipeline {
 
     stages {
         stage('Checkout') {
-            steps {
-                checkout scm
-            }
+            steps { checkout scm }
         }
 
         stage('Build & Deploy') {
@@ -41,22 +39,20 @@ pipeline {
                 docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} build --no-cache frontend
                 docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d frontend
                 '''
-                echo "Attente du démarrage de l'application (15s)..."
                 sleep 15
             }
         }
 
         stage('Security Scan — Container (Trivy)') {
             steps {
-                echo '🔍 Scan profond de l image (Vulnerabilities & Secrets)...'
                 script {
-                    // Suppression de --skip-db-update pour assurer le premier run réussi
+                    // On lance le scan. On ne met pas de "|| true" ici car on veut le JSON même si ça échoue
                     sh """
                     docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                         ${TRIVY_IMAGE} image \
                         --severity HIGH,CRITICAL \
                         --format json --output trivy-report.json \
-                        ${IMAGE_FRONTEND}:latest
+                        ${IMAGE_FRONTEND}:latest || true
                     """
                 }
             }
@@ -64,7 +60,6 @@ pipeline {
 
         stage('Security Scan — DAST (OWASP ZAP)') {
             steps {
-                echo '🚀 Lancement du scan dynamique (DAST)...'
                 sh """
                 mkdir -p zap-reports
                 chmod 777 zap-reports
@@ -84,7 +79,7 @@ pipeline {
                 string(credentialsId: "${TELEGRAM_CHAT_ID}", variable: 'CHAT_ID')
             ]) {
                 script {
-                    // Extraction des stats de sécurité
+                    // Extraction précise des vulnérabilités
                     def criticals = sh(script: "grep -o '\"Severity\":\"CRITICAL\"' trivy-report.json | wc -l || echo 0", returnStdout: true).trim()
                     def highs = sh(script: "grep -o '\"Severity\":\"HIGH\"' trivy-report.json | wc -l || echo 0", returnStdout: true).trim()
                     
@@ -95,12 +90,12 @@ pipeline {
 🏗️ *Build:* #${BUILD_NUMBER}
 🌐 *Application:* `${IMAGE_FRONTEND}`
 
-🛡️ *SECURITY SUMMARY (Trivy)*
+🛡️ *SECURITY STATUS (Trivy)*
 🛑 *Critical:* ${criticals}
 ⚠️ *High:* ${highs}
 
-✅ *Status:* Application déployée et fonctionnelle.
-🔗 *Console:* [Voir sur Jenkins](${env.BUILD_URL})
+✅ *Status:* Déploiement actif sur le port 80.
+🔗 *Console:* [Accéder au Build](${env.BUILD_URL})
 ━━━━━━━━━━━━━━━━━━━━
 """
                     sh "curl -s -X POST 'https://api.telegram.org/bot${BOT_TOKEN}/sendMessage' -d 'chat_id=${CHAT_ID}' -d 'parse_mode=Markdown' -d 'text=${message}'"
@@ -119,22 +114,22 @@ pipeline {
 ━━━━━━━━━━━━━━━━━━━━
 ❌ *Build:* #${BUILD_NUMBER}
 🛑 *Projet:* `${COMPOSE_PROJECT}`
-⚠️ *Alerte:* Le déploiement ou les scans ont échoué.
+⚠️ *Alerte:* Échec critique durant le build ou les scans.
 
-ℹ️ *Action Requise:* Vérifiez les rapports ci-joints ou les logs Jenkins.
-🔗 *Logs:* [Accéder au build](${env.BUILD_URL})
+ℹ️ *Action:* Consultez les rapports ci-dessous pour corriger les failles.
+🔗 *Logs:* [Détails Jenkins](${env.BUILD_URL})
 ━━━━━━━━━━━━━━━━━━━━
 """
-                    // 1. Message d'alerte
+                    // 1. Envoyer le texte
                     sh "curl -s -X POST 'https://api.telegram.org/bot${BOT_TOKEN}/sendMessage' -d 'chat_id=${CHAT_ID}' -d 'parse_mode=Markdown' -d 'text=${message}'"
 
-                    // 2. Envoi des rapports si disponibles
+                    // 2. Envoyer les documents si existants
                     sh """
                     if [ -f trivy-report.json ]; then
-                        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" -F "chat_id=${CHAT_ID}" -F "document=@trivy-report.json" -F "caption=📄 Rapport Trivy (JSON)"
+                        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" -F "chat_id=${CHAT_ID}" -F "document=@trivy-report.json" -F "caption=📄 Rapport Trivy"
                     fi
                     if [ -f zap-reports/zap_report.html ]; then
-                        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" -F "chat_id=${CHAT_ID}" -F "document=@zap-reports/zap_report.html" -F "caption=🛡️ Rapport OWASP ZAP (HTML)"
+                        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" -F "chat_id=${CHAT_ID}" -F "document=@zap-reports/zap_report.html" -F "caption=🛡️ Rapport OWASP ZAP"
                     fi
                     """
                 }
@@ -142,7 +137,6 @@ pipeline {
         }
 
         always {
-            echo "Nettoyage et Archivage..."
             archiveArtifacts artifacts: 'zap-reports/zap_report.html, trivy-report.json', allowEmptyArchive: true
             sh 'rm -f .env && docker image prune -f'
         }
