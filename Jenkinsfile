@@ -16,18 +16,21 @@ pipeline {
             }
         }
 
-        stage('Security Scan — Filesystem') {
+	stage('Security Scan — Filesystem') {
             steps {
-                echo '🔍 Scan des sources avec l image GHCR...'
+                echo '🔍 Scan profond des sources (Secrets + Vulns)...'
                 sh """
                 docker run --rm \
                     -v "\$(pwd)/frontend":/scan:ro \
                     ${TRIVY_IMAGE} fs \
+                    --scanners vuln,secret \
                     --severity HIGH,CRITICAL \
                     --exit-code 1 \
+                    --no-progress \
                     /scan
                 """
             }
+        }
         }
 
         stage('Build & Deploy') {
