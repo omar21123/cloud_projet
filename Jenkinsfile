@@ -22,9 +22,8 @@ pipeline {
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
     ghcr.io/aquasecurity/trivy:latest image \
     --scanners secret \
-    --exit-code 1 \
     --severity HIGH,CRITICAL \
-    --secret-config /dev/null \
+    --exit-code 1 \
     cloud_projet-frontend:latest
 """
             }
