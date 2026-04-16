@@ -1,58 +1,36 @@
 pipeline {
     agent any
-    environment {
-        DB_PASSWORD = credentials('db-password')
-        CTFD_SECRET_KEY = credentials('ctfd-secret-key')
-        DB_ROOT_PASSWORD = credentials('db-root-password')
-        DEPLOY_DIR = '/home/ubuntu/cloud_projet'
-    }
-    options {
-        skipDefaultCheckout(true)
-    }
+
     stages {
         stage('Checkout') {
             steps {
-                deleteDir()
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    extensions: [
-                        [$class: 'SubmoduleOption',
-                         disableSubmodules: false,
-                         parentCredentials: false,
-                         recursiveSubmodules: true,
-                         reference: '',
-                         trackingSubmodules: false]
-                    ],
-                    userRemoteConfigs: [[url: 'https://github.com/Kimperi/CI-CD.git']]
-                ])
+                checkout scm
             }
         }
-        stage('Sync files') {
+
+        stage('Build & Deploy') {
             steps {
                 sh '''
-                    set -e
-                    rm -rf "$DEPLOY_DIR/CTFd"
-                    rm -rf "$DEPLOY_DIR/frontend"
-                    rm -rf "$DEPLOY_DIR/nginx"
-                    cp -r "$WORKSPACE/CTFd" "$DEPLOY_DIR/"
-                    cp -r "$WORKSPACE/frontend" "$DEPLOY_DIR/"
-                    cp -r "$WORKSPACE/nginx" "$DEPLOY_DIR/"
-                    cp "$WORKSPACE/docker-compose.prod.yml" "$DEPLOY_DIR/"
-                    echo "Sync done"
-                    ls -la "$DEPLOY_DIR/"
+                # On recrée le fichier .env avec tes vraies clés
+                echo "DB_ROOT_PASSWORD=5y36g~Q7%gw2" > .env
+                echo "DB_PASSWORD=5y36g~Q7%gw2" >> .env
+                echo "CTFD_SECRET_KEY=5y36g~Q7%gw2" >> .env
+                echo "MARIADB_USER=ctfd" >> .env
+                echo "MARIADB_DATABASE=ctfd" >> .env
+                echo "DATABASE_URL=mysql+pymysql://ctfd:5y36g~Q7%gw2@secops-db/ctfd" >> .env
+                echo "REDIS_URL=redis://secops-redis:6379" >> .env
+
+                # On déploie avec le nom de projet 'cloud_projet' pour écraser l'ancien
+                # On force le build du frontend pour voir tes modifs immédiatement
+                docker compose -p cloud_projet -f docker-compose.prod.yml up -d --build frontend
                 '''
             }
         }
-        stage('Deploy') {
-            steps {
-                sh '''
-                    set -e
-                    cd "$DEPLOY_DIR"
-                    docker compose -f docker-compose.prod.yml build --no-cache frontend ctfd ctfd-nginx
-                    docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate frontend ctfd ctfd-nginx
-                '''
-            }
+    }
+
+    post {
+        success {
+            echo 'Succès ! Ton site est à jour sur project-cloud.online'
         }
     }
 }
