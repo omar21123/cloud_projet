@@ -23,6 +23,7 @@ function App() {
   const containerRef = useRef(null);
   const [Loaded, setLoaded] = useState(false);
 
+  const AWS_SECRET_KEY = "AKIAIMNOBADEGANEXAMPLE";
   useEffect(() => {
     setTimeout(() => {
       setLoaded(true);
