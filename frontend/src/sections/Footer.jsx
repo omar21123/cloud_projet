@@ -188,7 +188,7 @@ const Footer = () => {
               target={"_blank"}
               rel="dofollow noreferrer"
             >
-              Omar boogeyman  dada
+              Omar boogeyman  ba
             </a>
           </span>
         </Bottom>
