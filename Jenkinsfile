@@ -72,21 +72,20 @@ pipeline {
         // Scan de l'image Docker buildée (post-build)
         // Trivy analyse l'image finale : OS packages + libs app
         // ══════════════════════════════════════════════════════════
-        stage('Security Scan — Docker Image') {
-            steps {
-                echo '🔍 Scan Trivy de l image Docker frontend...'
-                sh '''
-                docker run --rm \
-                    -v /var/run/docker.sock:/var/run/docker.sock \
-                    aquasec/trivy:latest image \
-                    --severity HIGH,CRITICAL \
-                    --exit-code 0 \
-                    --format table \
-                    ${IMAGE_FRONTEND}
-                '''
-            }
-        }
-
+	stage('Security Scan — Filesystem') {
+    		steps {
+        echo '🔍 Scan Trivy des dépendances npm (frontend)...'
+        sh '''
+        docker run --rm \
+            -v "$(pwd)/frontend":/scan:ro \
+            ghcr.io/aquasecurity/trivy:latest fs \
+            --severity HIGH,CRITICAL \
+            --exit-code 0 \
+            --format table \
+            /scan
+        '''
+    }
+}
     }
 
     post {
