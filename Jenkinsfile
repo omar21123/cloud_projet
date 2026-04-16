@@ -57,14 +57,14 @@ pipeline {
             }
         }
 
-        stage('Security Scan — Container Image') {
+	stage('Security Scan — Container Image') {
             steps {
-                echo '🔍 Scan de l image Docker finale...'
-                // Montage du docker.sock pour que le conteneur Trivy puisse scanner les images locales de l'hôte
+                echo '🔍 Scan profond de l image (OS + Secrets)...'
                 sh """
                 docker run --rm \
                     -v /var/run/docker.sock:/var/run/docker.sock \
                     ${TRIVY_IMAGE} image \
+                    --scanners vuln,secret \
                     --exit-code 1 \
                     --severity HIGH,CRITICAL \
                     ${IMAGE_FRONTEND}:latest
