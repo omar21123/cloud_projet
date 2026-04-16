@@ -188,7 +188,7 @@ const Footer = () => {
               target={"_blank"}
               rel="dofollow noreferrer"
             >
-              Omar hhhhhhhhh
+              Omar hhhhhbtgstrgssetyehtr
             </a>
           </span>
         </Bottom>
