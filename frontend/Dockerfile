@@ -9,7 +9,7 @@ COPY . .
 RUN npm run build
 
 # STAGE 2: The Server (Wear the Suit)
-FROM nginx:alpine
+FROM nginx:1.10
 # Copy the compiled assets from Stage 1
 COPY --from=build /app/build /usr/share/nginx/html
 
