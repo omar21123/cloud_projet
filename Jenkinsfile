@@ -20,23 +20,24 @@ pipeline {
 
         stage('Build & Deploy') {
             environment {
-                ENV_DB_ROOT_PASSWORD = credentials('DB_ROOT_PASSWORD')
-                ENV_DB_PASSWORD      = credentials('DB_PASSWORD')
-                ENV_CTFD_SECRET_KEY  = credentials('CTFD_SECRET_KEY')
-                ENV_MARIADB_USER     = credentials('MARIADB_USER')
-                ENV_MARIADB_DATABASE = credentials('MARIADB_DATABASE')
-                ENV_DATABASE_URL     = credentials('DATABASE_URL')
-                ENV_REDIS_URL        = credentials('REDIS_URL')
+                // Récupération sécurisée des credentials Jenkins
+                DB_ROOT = credentials('DB_ROOT_PASSWORD')
+                DB_PASS = credentials('DB_PASSWORD')
+                CTFD_KEY = credentials('CTFD_SECRET_KEY')
+                DB_USER = credentials('MARIADB_USER')
+                DB_NAME = credentials('MARIADB_DATABASE')
+                DB_URL = credentials('DATABASE_URL')
+                REDIS_URL = credentials('REDIS_URL')
             }
             steps {
                 sh '''
-                echo "DB_ROOT_PASSWORD=${ENV_DB_ROOT_PASSWORD}" > .env
-                echo "DB_PASSWORD=${ENV_DB_PASSWORD}" >> .env
-                echo "CTFD_SECRET_KEY=${ENV_CTFD_SECRET_KEY}" >> .env
-                echo "MARIADB_USER=${ENV_MARIADB_USER}" >> .env
-                echo "MARIADB_DATABASE=${ENV_MARIADB_DATABASE}" >> .env
-                echo "DATABASE_URL=${ENV_DATABASE_URL}" >> .env
-                echo "REDIS_URL=${ENV_REDIS_URL}" >> .env
+                echo "DB_ROOT_PASSWORD=${DB_ROOT}" > .env
+                echo "DB_PASSWORD=${DB_PASS}" >> .env
+                echo "CTFD_SECRET_KEY=${CTFD_KEY}" >> .env
+                echo "MARIADB_USER=${DB_USER}" >> .env
+                echo "MARIADB_DATABASE=${DB_NAME}" >> .env
+                echo "DATABASE_URL=${DB_URL}" >> .env
+                echo "REDIS_URL=${REDIS_URL}" >> .env
 
                 docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} build --no-cache frontend
                 docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d frontend
@@ -50,10 +51,12 @@ pipeline {
             steps {
                 echo '🔍 Scan profond de l image (Vulnerabilities & Secrets)...'
                 script {
-                    // On sort le résultat en JSON pour le traitement post-build
+                    // On ajoute --skip-java-db-update pour économiser l'espace disque (850Mo)
                     sh """
                     docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                         ${TRIVY_IMAGE} image \
+                        --skip-db-update \
+                        --skip-java-db-update \
                         --severity HIGH,CRITICAL \
                         --format json --output trivy-report.json \
                         ${IMAGE_FRONTEND}:latest
@@ -67,9 +70,9 @@ pipeline {
                 echo '🚀 Lancement du scan dynamique (DAST)...'
                 sh """
                 mkdir -p zap-reports
+                # chmod pour s'assurer que Jenkins peut lire le rapport généré par le container ZAP
                 chmod 777 zap-reports
                 docker run --rm -v \$(pwd)/zap-reports:/zap/wrk/:rw --network="host" \
-                    -u \$(id -u):\$(id -g) \
                     ${ZAP_IMAGE} zap-baseline.py \
                     -t http://localhost:80 \
                     -r zap_report.html || true
@@ -85,19 +88,9 @@ pipeline {
                 string(credentialsId: "${TELEGRAM_CHAT_ID}", variable: 'CHAT_ID')
             ]) {
                 script {
-                    // On remplace les underscores par des tirets pour éviter l'erreur de parsing Markdown de Telegram
-                    def safeApp = IMAGE_FRONTEND.replace("_", "-")
-                    def trivyCount = "0"
-                    
-                    if (fileExists('trivy-report.json')) {
-                        trivyCount = sh(script: "grep -o '\"Severity\":\"' trivy-report.json | wc -l", returnStdout: true).trim()
-                    }
-
+                    def trivyCount = sh(script: "grep -o '\"Severity\":\"' trivy-report.json | wc -l || echo 0", returnStdout: true).trim()
                     sh """
-                    MESSAGE="✅ *PIPELINE RÉUSSI* %0A%0A"
-                    MESSAGE="\${MESSAGE}*App:* ${safeApp}%0A"
-                    MESSAGE="\${MESSAGE}*Trivy Alertes:* ${trivyCount} (H/C)%0A"
-                    MESSAGE="\${MESSAGE}*DAST Report:* Généré"
+                    MESSAGE="✅ *PIPELINE RÉUSSI* ✅%0A%0A*App :* ${IMAGE_FRONTEND}%0A*Trivy Alertes :* ${trivyCount} (High/Critical)%0A*Statut :* Déploiement actif sur le port 80."
                     
                     curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
                         -d "chat_id=${CHAT_ID}" \
@@ -114,26 +107,48 @@ pipeline {
                 string(credentialsId: "${TELEGRAM_CHAT_ID}", variable: 'CHAT_ID')
             ]) {
                 script {
-                    def safeJob = JOB_NAME.replace("_", "-")
+                    // 1. Envoi du message texte d'alerte
                     sh """
-                    MESSAGE="🚨 *ALERTE ÉCHEC SÉCURITÉ* %0A%0A"
-                    MESSAGE="\${MESSAGE}*Job:* ${safeJob}%0A"
-                    MESSAGE="\${MESSAGE}*Build:* #${BUILD_NUMBER}%0A"
-                    MESSAGE="\${MESSAGE}*Action:* Vérifiez les logs Trivy/ZAP."
-
+                    MESSAGE="🚨 *ALERTE ÉCHEC SÉCURITÉ* 🚨%0A%0A*Build :* #${BUILD_NUMBER}%0A*Action :* Le pipeline a échoué. Vérifiez les rapports ci-joints."
                     curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
                         -d "chat_id=${CHAT_ID}" \
                         -d "parse_mode=Markdown" \
                         -d "text=\${MESSAGE}"
+                    """
+
+                    // 2. Envoi du rapport Trivy (Vérification si le fichier existe)
+                    sh """
+                    if [ -f trivy-report.json ]; then
+                        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+                            -F "chat_id=${CHAT_ID}" \
+                            -F "document=@trivy-report.json" \
+                            -F "caption=📄 Rapport Trivy (JSON)"
+                    fi
+                    """
+
+                    // 3. Envoi du rapport OWASP ZAP (HTML - Interactif et visuel)
+                    sh """
+                    if [ -f zap-reports/zap_report.html ]; then
+                        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+                            -F "chat_id=${CHAT_ID}" \
+                            -F "document=@zap-reports/zap_report.html" \
+                            -F "caption=🛡️ Rapport OWASP ZAP (DAST)"
+                    fi
                     """
                 }
             }
         }
 
         always {
-            echo "Nettoyage et archivage..."
+            echo "Nettoyage et Archivage..."
+            // Archivage dans Jenkins pour garder une trace historique
             archiveArtifacts artifacts: 'zap-reports/zap_report.html, trivy-report.json', allowEmptyArchive: true
-            sh 'rm -f .env'
+            
+            // Nettoyage disque indispensable sur ton EC2
+            sh '''
+            rm -f .env
+            docker image prune -f
+            '''
         }
     }
 }
