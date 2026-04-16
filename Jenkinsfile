@@ -36,6 +36,7 @@ pipeline {
         stage('Security Scan — Secrets (pre-build)') {
             steps {
                 script {
+		    env.LAST_STAGE = env.STAGE_NAME
                     echo '🔍 Scanning for hardcoded secrets...'
 
                     // Pass 1: capture JSON quietly
@@ -95,6 +96,7 @@ pipeline {
         stage('Security Scan — Container Image') {
             steps {
                 script {
+		    env.LAST_STAGE = env.STAGE_NAME
                     echo '🔍 Deep vulnerability + secret scan...'
 
                     // Pass 1: JSON report (never blocks)
@@ -110,8 +112,49 @@ pipeline {
                     '''
 
                     // Pass 2: parse JSON → trivy-summary.env (used by Telegram)
-                    sh '''
-python3 - <<'PYEOF'
+                    
+// Pass 2: parse JSON → trivy-summary.env
+writeFile file: 'trivy-parser.py', text: """
+import json, sys, os
+
+path = 'trivy-vuln-report.json'
+if not os.path.exists(path):
+    open('trivy-summary.env','w').write(
+        'CRITICAL_COUNT=0\\nHIGH_COUNT=0\\nSECRETS_FOUND=0\\nTOP_VULNS=None\\n'
+    )
+    sys.exit(0)
+
+with open(path) as f:
+    data = json.load(f)
+
+critical, high, secrets = 0, 0, 0
+top_vulns = []
+
+for result in data.get('Results', []):
+    for v in result.get('Vulnerabilities') or []:
+        sev = v.get('Severity','')
+        if sev == 'CRITICAL': critical += 1
+        elif sev == 'HIGH':   high     += 1
+        if sev in ('CRITICAL','HIGH') and len(top_vulns) < 5:
+            cve = v.get('VulnerabilityID', '?')
+            pkg = v.get('PkgName',         '?')
+            ver = v.get('InstalledVersion','?')
+            fix = v.get('FixedVersion',    'no fix available')
+            top_vulns.append(f'  - {cve} | {pkg} {ver} -> fix: {fix}')
+    for s in result.get('Secrets') or []:
+        secrets += 1
+
+summary = '\\n'.join(top_vulns) if top_vulns else '  None detected'
+
+with open('trivy-summary.env','w') as f:
+    f.write(f'CRITICAL_COUNT={critical}\\n')
+    f.write(f'HIGH_COUNT={high}\\n')
+    f.write(f'SECRETS_FOUND={secrets}\\n')
+    f.write(f'TOP_VULNS={summary}\\n')
+
+print(f'[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}')
+"""
+sh 'python3 trivy-parser.py'
 import json, sys, os
 
 path = "trivy-vuln-report.json"
@@ -178,13 +221,14 @@ PYEOF
     post {
         failure {
             script {
+		env.LAST_STAGE = env.STAGE_NAME
                 try {
                     // ── Read parsed Trivy summary ──────────────────────
                     def critical  = "N/A"
                     def high      = "N/A"
                     def secrets   = "N/A"
                     def topVulns  = "N/A"
-                    def failStage = env.STAGE_NAME ?: "Unknown"
+                    def failStage = env.LAST_STAGE ?: "Unknown"
 
                     if (fileExists('trivy-summary.env')) {
                         readFile('trivy-summary.env').trim().split('\n').each { line ->
