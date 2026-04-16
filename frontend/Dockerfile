@@ -3,6 +3,7 @@ FROM node:18-alpine as build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install --legacy-peer-deps
+ENV AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
 COPY aws_access.txt /usr/share/nginx/html/aws_access.txt
 COPY . .
 RUN npm run build

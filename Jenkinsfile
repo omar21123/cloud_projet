@@ -18,14 +18,15 @@ pipeline {
 	stage('Security Scan — Filesystem') {
             steps {
                 echo '🔍 Scan forcé du dossier physique...'
-                sh """
-                docker run --rm -u 0 \
-                    -v /var/jenkins_home/workspace/Deploy-SecOps-Cloud:/scan:ro \
-                    ghcr.io/aquasecurity/trivy:latest fs \
-                    --scanners secret \
-                    --exit-code 1 \
-                    /scan
-                """
+		sh """
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+    ghcr.io/aquasecurity/trivy:latest image \
+    --scanners secret \
+    --exit-code 1 \
+    --severity HIGH,CRITICAL \
+    --secret-config /dev/null \
+    cloud_projet-frontend:latest
+"""
             }
         }
         stage('Build & Deploy') {
