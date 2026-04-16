@@ -24,7 +24,7 @@ pipeline {
                     -v "\$(pwd)/frontend":/scan:ro \
                     ${TRIVY_IMAGE} fs \
                     --severity HIGH,CRITICAL \
-                    --exit-code 0 \
+                    --exit-code 1 \
                     /scan
                 """
             }
