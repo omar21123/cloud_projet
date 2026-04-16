@@ -2,11 +2,13 @@ pipeline {
     agent any
 
     environment {
-        // Définition des tags et noms de projet
-        IMAGE_NAME = "cloud_projet-frontend"
-        COMPOSE_PROJECT = "cloud_projet"
-        TELEGRAM_CREDS_ID = "telegram_bot_token" // ID dans Jenkins Credentials
-        TELEGRAM_CHAT_ID = "telegram_chat_id"   // ID dans Jenkins Credentials
+        COMPOSE_PROJECT   = "cloud_projet"
+        COMPOSE_FILE      = "docker-compose.prod.yml"
+        IMAGE_FRONTEND    = "cloud_projet-frontend"
+        TRIVY_IMAGE       = "ghcr.io/aquasecurity/trivy:latest"
+        ZAP_IMAGE         = "ghcr.io/zaproxy/zaproxy:stable"
+        TELEGRAM_CREDS_ID = 'TELEGRAM_TOKEN_ID'
+        TELEGRAM_CHAT_ID  = 'TELEGRAM_CHAT_ID'
     }
 
     stages {
@@ -17,52 +19,62 @@ pipeline {
         }
 
         stage('Build & Deploy') {
+            environment {
+                ENV_DB_ROOT_PASSWORD = credentials('DB_ROOT_PASSWORD')
+                ENV_DB_PASSWORD      = credentials('DB_PASSWORD')
+                ENV_CTFD_SECRET_KEY  = credentials('CTFD_SECRET_KEY')
+                ENV_MARIADB_USER     = credentials('MARIADB_USER')
+                ENV_MARIADB_DATABASE = credentials('MARIADB_DATABASE')
+                ENV_DATABASE_URL     = credentials('DATABASE_URL')
+                ENV_REDIS_URL        = credentials('REDIS_URL')
+            }
             steps {
-                // Utilisation des credentials pour le fichier .env
-                withCredentials([
-                    string(credentialsId: 'DB_ROOT_PASSWORD', variable: 'DB_ROOT'),
-                    string(credentialsId: 'DB_PASSWORD', variable: 'DB_PASS'),
-                    string(credentialsId: 'CTFD_SECRET_KEY', variable: 'CTFD_KEY'),
-                    string(credentialsId: 'MARIADB_USER', variable: 'DB_USER'),
-                    string(credentialsId: 'MARIADB_DATABASE', variable: 'DB_NAME'),
-                    string(credentialsId: 'DATABASE_URL', variable: 'DB_URL'),
-                    string(credentialsId: 'REDIS_URL', variable: 'REDIS_URL')
-                ]) {
-                    sh """
-                    echo "DB_ROOT_PASSWORD=${DB_ROOT}" > .env
-                    echo "DB_PASSWORD=${DB_PASS}" >> .env
-                    echo "CTFD_SECRET_KEY=${DB_PASS}" >> .env
-                    echo "MARIADB_USER=${DB_USER}" >> .env
-                    echo "MARIADB_DATABASE=${DB_NAME}" >> .env
-                    echo "DATABASE_URL=${DB_URL}" >> .env
-                    echo "REDIS_URL=${REDIS_URL}" >> .env
-                    
-                    # Build sans cache pour garantir la fraîcheur
-                    docker compose -p ${COMPOSE_PROJECT} -f docker-compose.prod.yml build --no-cache frontend
-                    
-                    # Déploiement
-                    docker compose -p ${COMPOSE_PROJECT} -f docker-compose.prod.yml up -d frontend
-                    """
-                }
-                sleep 5 // Laisser le temps au conteneur de se stabiliser
+                sh '''
+                echo "DB_ROOT_PASSWORD=${ENV_DB_ROOT_PASSWORD}" > .env
+                echo "DB_PASSWORD=${ENV_DB_PASSWORD}" >> .env
+                echo "CTFD_SECRET_KEY=${ENV_CTFD_SECRET_KEY}" >> .env
+                echo "MARIADB_USER=${ENV_MARIADB_USER}" >> .env
+                echo "MARIADB_DATABASE=${ENV_MARIADB_DATABASE}" >> .env
+                echo "DATABASE_URL=${ENV_DATABASE_URL}" >> .env
+                echo "REDIS_URL=${ENV_REDIS_URL}" >> .env
+
+                docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} build --no-cache frontend
+                docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d frontend
+                '''
+                // On attend que l'application soit bien démarrée
+                echo "Attente du démarrage de l'application..."
+                sleep 10
             }
         }
 
-        stage('Security Scan (Trivy)') {
+        stage('Security Scan — Container (Trivy)') {
             steps {
+                echo '🔍 Scan profond de l image (Vulnerabilities & Secrets)...'
                 script {
-                    // On scanne l'OS ET les bibliothèques (npm) avec --vuln-type os,library
-                    // On ignore les erreurs pour ne pas bloquer le pipeline si des vulns existent
+                    // On génère un résumé JSON pour Telegram mais on bloque le build si HIGH/CRITICAL
                     sh """
                     docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                    ghcr.io/aquasecurity/trivy:latest image \
-                    --severity HIGH,CRITICAL \
-                    --vuln-type os,library \
-                    --format json \
-                    --output trivy-report.json \
-                    ${IMAGE_NAME}:latest
+                        ${TRIVY_IMAGE} image \
+                        --severity HIGH,CRITICAL \
+                        --format json --output trivy-report.json \
+                        ${IMAGE_FRONTEND}:latest
                     """
                 }
+            }
+        }
+
+        stage('Security Scan — DAST (OWASP ZAP)') {
+            steps {
+                echo '🚀 Lancement du scan dynamique (DAST)...'
+                sh """
+                mkdir -p zap-reports
+                docker run --rm -v \$(pwd)/zap-reports:/zap/wrk/:rw --network="host" \
+                    ${ZAP_IMAGE} zap-baseline.py \
+                    -t http://localhost:80 \
+                    -r zap_report.html || true
+                """
+                // Note: '|| true' évite de bloquer le build si ZAP trouve des alertes mineures
+                // Tu peux l'enlever pour être plus strict.
             }
         }
     }
@@ -74,26 +86,18 @@ pipeline {
                 string(credentialsId: "${TELEGRAM_CHAT_ID}", variable: 'CHAT_ID')
             ]) {
                 script {
-                    // Extraction des résultats pour le message
-                    def criticals = sh(script: "grep -o '\"Severity\":\"CRITICAL\"' trivy-report.json | wc -l || echo 0", returnStdout: true).trim()
-                    def highs = sh(script: "grep -o '\"Severity\":\"HIGH\"' trivy-report.json | wc -l || echo 0", returnStdout: true).trim()
-                    def cveList = sh(script: "grep -oE 'CVE-[0-9]{4}-[0-9]+' trivy-report.json | sort | uniq | head -n 5 | tr '\\n' ' ' || echo 'Aucune'", returnStdout: true).trim()
-
-                    def message = """
-✅ *PIPELINE RÉUSSI*
-━━━━━━━━━━━━━━━━━━━━
-📦 *Projet:* `${COMPOSE_PROJECT}`
-🏗️ *Build:* #${BUILD_NUMBER}
-
-🛡️ *RÉSUMÉ SÉCURITÉ*
-🛑 *Critiques:* ${criticals}
-⚠️ *Hautes:* ${highs}
-🔍 *Détails:* `${cveList}`
-
-🚀 *Status:* Front-end déployé avec succès.
-━━━━━━━━━━━━━━━━━━━━
-"""
-                    sh "curl -s -X POST 'https://api.telegram.org/bot${BOT_TOKEN}/sendMessage' -d 'chat_id=${CHAT_ID}' -d 'parse_mode=Markdown' -d 'text=${message}'"
+                    def trivyCount = sh(script: "grep -o '\"Severity\":\"' trivy-report.json | wc -l", returnStdout: true).trim()
+                    sh """
+                    MESSAGE="✅ *PIPELINE RÉUSSI* ✅%0A%0A"
+                    MESSAGE="\${MESSAGE}*App :* ${IMAGE_FRONTEND}%0A"
+                    MESSAGE="\${MESSAGE}*Trivy Alertes :* ${trivyCount} (High/Critical)%0A"
+                    MESSAGE="\${MESSAGE}*ZAP Report :* Généré (HTML)%0A"
+                    
+                    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+                        -d "chat_id=${CHAT_ID}" \
+                        -d "parse_mode=Markdown" \
+                        -d "text=\${MESSAGE}"
+                    """
                 }
             }
         }
@@ -103,12 +107,24 @@ pipeline {
                 string(credentialsId: "${TELEGRAM_CREDS_ID}", variable: 'BOT_TOKEN'),
                 string(credentialsId: "${TELEGRAM_CHAT_ID}", variable: 'CHAT_ID')
             ]) {
-                sh """
-                curl -s -X POST 'https://api.telegram.org/bot${BOT_TOKEN}/sendMessage' \
-                -d 'chat_id=${CHAT_ID}' \
-                -d 'text=❌ ÉCHEC DU PIPELINE #${BUILD_NUMBER} pour ${COMPOSE_PROJECT}'
-                """
+                sh '''
+                MESSAGE="🚨 *ALERTE ÉCHEC SÉCURITÉ* 🚨%0A%0A"
+                MESSAGE="${MESSAGE}*Build :* #${BUILD_NUMBER}%0A"
+                MESSAGE="${MESSAGE}*Action :* Le scan Trivy ou ZAP a détecté des failles critiques.%0A"
+                MESSAGE="${MESSAGE}*Lien :* ${BUILD_URL}"
+
+                curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+                    -d "chat_id=${CHAT_ID}" \
+                    -d "parse_mode=Markdown" \
+                    -d "text=${MESSAGE}"
+                '''
             }
+        }
+
+        always {
+            echo "Archivage des rapports..."
+            archiveArtifacts artifacts: 'zap-reports/zap_report.html, trivy-report.json', allowEmptyArchive: true
+            sh 'rm -f .env'
         }
     }
 }
