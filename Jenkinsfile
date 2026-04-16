@@ -18,22 +18,26 @@ pipeline {
 
 	stage('Security Scan — Filesystem') {
             steps {
-                echo '🔍 Scan profond des sources (Secrets + Vulns)...'
+                echo '🔍 Scan profond des sources (Workspace complet)...'
                 sh """
                 docker run --rm \
-                    -v "\$(pwd)/frontend":/scan:ro \
-                    ${TRIVY_IMAGE} fs \
+                    -v ${WORKSPACE}:/scan:ro \
+                    ghcr.io/aquasecurity/trivy:latest fs \
                     --scanners vuln,secret \
                     --severity HIGH,CRITICAL \
                     --exit-code 1 \
-                    --no-progress \
                     /scan
                 """
             }
-        
         }
-
-        stage('Build & Deploy') {
+        
+	stage('Security Scan — Container Image') {
+            steps {
+                echo '🔍 Scan de l image Docker finale...'
+                sh "docker run --rm ghcr.io/aquasecurity/trivy:latest image --exit-code 1 --severity HIGH,CRITICAL cloud_projet-frontend:latest"
+            }
+        }
+	stage('Build & Deploy') {
             environment {
                 // Utilise tes credentials Jenkins ici
                 ENV_DB_ROOT_PASSWORD = credentials('DB_ROOT_PASSWORD')
