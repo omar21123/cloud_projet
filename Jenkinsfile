@@ -30,7 +30,7 @@ pipeline {
                     /scan
                 """
             }
-        }
+        
         }
 
         stage('Build & Deploy') {
