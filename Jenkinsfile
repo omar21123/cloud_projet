@@ -1,5 +1,6 @@
 pipeline {
     agent any
+
     environment {
         COMPOSE_PROJECT   = "cloud_projet"
         COMPOSE_FILE      = "docker-compose.prod.yml"
@@ -11,15 +12,24 @@ pipeline {
 
     stages {
 
-        // ─────────────────────────────────────────────
         stage('Checkout') {
             steps {
                 script { env.LAST_STAGE = 'Checkout' }
                 checkout scm
+                script {
+                    env.GIT_BRANCH_NAME = sh(
+                        script: "git rev-parse --abbrev-ref HEAD",
+                        returnStdout: true
+                    ).trim()
+
+                    env.GIT_COMMIT_SHORT = sh(
+                        script: "git rev-parse --short HEAD",
+                        returnStdout: true
+                    ).trim()
+                }
             }
         }
 
-        // ─────────────────────────────────────────────
         stage('Setup — Trivy Cache') {
             steps {
                 script { env.LAST_STAGE = 'Setup — Trivy Cache' }
@@ -34,7 +44,6 @@ pipeline {
             }
         }
 
-        // ─────────────────────────────────────────────
         stage('Build & Deploy') {
             environment {
                 ENV_DB_ROOT_PASSWORD = credentials('DB_ROOT_PASSWORD')
@@ -62,7 +71,6 @@ pipeline {
             }
         }
 
-        // ─────────────────────────────────────────────
         stage('Security Scan — Secrets (pre-deploy)') {
             steps {
                 script {
@@ -96,14 +104,12 @@ pipeline {
             }
         }
 
-        // ─────────────────────────────────────────────
         stage('Security Scan — Container Image') {
             steps {
                 script {
                     env.LAST_STAGE = 'Security Scan — Container Image'
                     echo '🔍 Deep vulnerability + secret scan...'
 
-                    // Pass 1: write JSON report via --output (bypasses stdout pollution)
                     sh '''
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
@@ -122,17 +128,16 @@ pipeline {
                         head -c 200 trivy-vuln-report.json || true
                     '''
 
-                    // Pass 2: parse the JSON report
                     writeFile file: 'trivy-parser.py', text: '''#!/usr/bin/env python3
 import json, sys, os
 
 path = "trivy-vuln-report.json"
 if not os.path.exists(path) or os.path.getsize(path) == 0:
     with open("trivy-summary.env", "w") as f:
-        f.write("CRITICAL_COUNT=0\\nHIGH_COUNT=0\\nSECRETS_FOUND=0\\n")
+        f.write("CRITICAL_COUNT=N/A\\nHIGH_COUNT=N/A\\nSECRETS_FOUND=N/A\\n")
     with open("trivy-top-vulns.txt", "w") as f:
-        f.write("  None detected")
-    print("[Trivy Parser] Report missing or empty — defaulting to 0")
+        f.write("  Report missing or empty")
+    print("[Trivy Parser] Report missing or empty")
     sys.exit(0)
 
 with open(path) as f:
@@ -141,9 +146,9 @@ with open(path) as f:
     except json.JSONDecodeError as e:
         print(f"[Trivy Parser] JSON parse error: {e}")
         with open("trivy-summary.env", "w") as f2:
-            f2.write("CRITICAL_COUNT=0\\nHIGH_COUNT=0\\nSECRETS_FOUND=0\\n")
+            f2.write("CRITICAL_COUNT=N/A\\nHIGH_COUNT=N/A\\nSECRETS_FOUND=N/A\\n")
         with open("trivy-top-vulns.txt", "w") as f2:
-            f2.write("  None detected")
+            f2.write("  JSON parse error")
         sys.exit(0)
 
 critical, high, secrets = 0, 0, 0
@@ -152,14 +157,18 @@ top_vulns = []
 for result in data.get("Results", []):
     for v in result.get("Vulnerabilities") or []:
         sev = v.get("Severity", "")
-        if sev == "CRITICAL": critical += 1
-        elif sev == "HIGH":   high += 1
+        if sev == "CRITICAL":
+            critical += 1
+        elif sev == "HIGH":
+            high += 1
+
         if sev in ("CRITICAL", "HIGH") and len(top_vulns) < 5:
             cve = v.get("VulnerabilityID", "?")
             pkg = v.get("PkgName", "?")
             ver = v.get("InstalledVersion", "?")
             fix = v.get("FixedVersion", "no fix available")
             top_vulns.append(f"  • {cve} | {pkg} {ver} → fix: {fix}")
+
     for s in result.get("Secrets") or []:
         secrets += 1
 
@@ -183,7 +192,6 @@ print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
                         cat trivy-top-vulns.txt || echo "No vulns file"
                     '''
 
-                    // Pass 3: enforce gate — blocks deployment if findings exist
                     def scanExit = sh(
                         script: '''
                             docker run --rm \
@@ -197,6 +205,7 @@ print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
                         ''',
                         returnStatus: true
                     )
+
                     if (scanExit != 0) {
                         error("❌ Trivy found HIGH/CRITICAL issues — deployment blocked.")
                     }
@@ -205,19 +214,21 @@ print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
         }
     }
 
-    // ─────────────────────────────────────────────
     post {
         failure {
             script {
                 def failStage = env.LAST_STAGE ?: 'Unknown'
-                try {
-                    def critical = "0"
-                    def high     = "0"
-                    def secrets  = "0"
-                    def topVulns = "  None detected"
+                def critical = 'N/A'
+                def high     = 'N/A'
+                def secrets  = 'N/A'
+                def topVulns = '  None detected'
+                def duration = currentBuild.durationString?.replace(' and counting', '') ?: 'N/A'
+                def branch   = env.GIT_BRANCH_NAME ?: (env.BRANCH_NAME ?: 'N/A')
+                def commitId = env.GIT_COMMIT_SHORT ?: 'N/A'
 
+                try {
                     if (fileExists('trivy-summary.env')) {
-                        readFile('trivy-summary.env').trim().split('\n').each { line ->
+                        readFile('trivy-summary.env').trim().split('\\n').each { line ->
                             def kv = line.split('=', 2)
                             if (kv.size() == 2) {
                                 switch (kv[0].trim()) {
@@ -231,61 +242,130 @@ print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
 
                     if (fileExists('trivy-top-vulns.txt')) {
                         topVulns = readFile('trivy-top-vulns.txt').trim()
-                        if (topVulns.isEmpty()) { topVulns = "  None detected" }
+                        if (!topVulns) {
+                            topVulns = '  None detected'
+                        }
                     }
 
                     def tripleBacktick = '```'
-                    def msg = """🚨 *ALERTE SÉCURITÉ — JENKINS* 🚨
+                    def msg = """🚨 *ALERTE JENKINS — BUILD FAILED*
 
 📦 *Projet :* `${env.JOB_NAME}`
 🔢 *Build :* #${env.BUILD_NUMBER}
 ❌ *Statut :* ÉCHEC
-🔴 *Étape  :* ${failStage}
+🔴 *Étape :* ${failStage}
+🌿 *Branch :* `${branch}`
+🧾 *Commit :* `${commitId}`
+⏱️ *Durée :* ${duration}
 
 ━━━━━━━━━━━━━━━━━━━━━
 🛡️ *Résultats Trivy*
 ━━━━━━━━━━━━━━━━━━━━━
-💣 CRITICAL  : *${critical}*
-⚠️  HIGH      : *${high}*
-🔑 Secrets   : *${secrets}*
+💣 CRITICAL : *${critical}*
+⚠️ HIGH     : *${high}*
+🔑 Secrets  : *${secrets}*
 
-📋 *Top vulnérabilités (CVE · package · fix):*
+📋 *Top vulnérabilités :*
 ${tripleBacktick}
 ${topVulns}
 ${tripleBacktick}
+
 🔗 [Voir les logs complets](${env.BUILD_URL}console)"""
 
                     withCredentials([
                         string(credentialsId: "${TELEGRAM_CREDS_ID}", variable: 'BOT_TOKEN'),
                         string(credentialsId: "${TELEGRAM_CHAT_ID}",  variable: 'CHAT_ID')
                     ]) {
-                        writeFile file: 'telegram-msg.txt', text: msg
+                        writeFile file: 'telegram-msg-failure.txt', text: msg
                         sh '''
                             curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
                                 --data-urlencode "chat_id=${CHAT_ID}" \
                                 --data-urlencode "parse_mode=Markdown" \
                                 --data-urlencode "disable_web_page_preview=true" \
-                                --data-urlencode "text@./telegram-msg.txt" || echo "Telegram send failed"
+                                --data-urlencode "text@./telegram-msg-failure.txt" || echo "Telegram send failed"
                         '''
                     }
-                    echo "✅ Telegram notification sent"
+
+                    echo "✅ Telegram failure notification sent"
                 } catch (Exception e) {
-                    echo "⚠️ Telegram send error: ${e.getMessage()}"
+                    echo "⚠️ Telegram failure send error: ${e.getMessage()}"
                 }
             }
         }
 
         success {
             script {
-                echo "✅ Build successful! No HIGH/CRITICAL issues found."
+                def critical = 'N/A'
+                def high     = 'N/A'
+                def secrets  = 'N/A'
+                def duration = currentBuild.durationString?.replace(' and counting', '') ?: 'N/A'
+                def branch   = env.GIT_BRANCH_NAME ?: (env.BRANCH_NAME ?: 'N/A')
+                def commitId = env.GIT_COMMIT_SHORT ?: 'N/A'
+
+                try {
+                    if (fileExists('trivy-summary.env')) {
+                        readFile('trivy-summary.env').trim().split('\\n').each { line ->
+                            def kv = line.split('=', 2)
+                            if (kv.size() == 2) {
+                                switch (kv[0].trim()) {
+                                    case 'CRITICAL_COUNT': critical = kv[1].trim(); break
+                                    case 'HIGH_COUNT':     high     = kv[1].trim(); break
+                                    case 'SECRETS_FOUND':  secrets  = kv[1].trim(); break
+                                }
+                            }
+                        }
+                    }
+
+                    def msg = """✅ *JENKINS BUILD SUCCESS*
+
+📦 *Projet :* `${env.JOB_NAME}`
+🔢 *Build :* #${env.BUILD_NUMBER}
+🟢 *Statut :* SUCCÈS
+🌿 *Branch :* `${branch}`
+🧾 *Commit :* `${commitId}`
+⏱️ *Durée :* ${duration}
+
+━━━━━━━━━━━━━━━━━━━━━
+🛡️ *Résultats Trivy réels*
+━━━━━━━━━━━━━━━━━━━━━
+💣 CRITICAL : *${critical}*
+⚠️ HIGH     : *${high}*
+🔑 Secrets  : *${secrets}*
+
+🔗 [Voir les logs complets](${env.BUILD_URL}console)"""
+
+                    withCredentials([
+                        string(credentialsId: "${TELEGRAM_CREDS_ID}", variable: 'BOT_TOKEN'),
+                        string(credentialsId: "${TELEGRAM_CHAT_ID}",  variable: 'CHAT_ID')
+                    ]) {
+                        writeFile file: 'telegram-msg-success.txt', text: msg
+                        sh '''
+                            curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+                                --data-urlencode "chat_id=${CHAT_ID}" \
+                                --data-urlencode "parse_mode=Markdown" \
+                                --data-urlencode "disable_web_page_preview=true" \
+                                --data-urlencode "text@./telegram-msg-success.txt" || echo "Telegram send failed"
+                        '''
+                    }
+
+                    echo "✅ Telegram success notification sent"
+                } catch (Exception e) {
+                    echo "⚠️ Telegram success send error: ${e.getMessage()}"
+                }
             }
         }
 
         always {
             sh '''
-                rm -f .env trivy-vuln-report.json trivy-secret-pre.json \
-                      trivy-summary.env trivy-top-vulns.txt \
-                      trivy-parser.py telegram-msg.txt || true
+                rm -f .env \
+                      trivy-vuln-report.json \
+                      trivy-secret-pre.json \
+                      trivy-summary.env \
+                      trivy-top-vulns.txt \
+                      trivy-parser.py \
+                      telegram-msg-failure.txt \
+                      telegram-msg-success.txt || true
+
                 docker image prune -f || true
             '''
         }
