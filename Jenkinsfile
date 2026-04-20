@@ -11,21 +11,13 @@ pipeline {
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 script { env.LAST_STAGE = 'Checkout' }
                 checkout scm
                 script {
-                    env.GIT_BRANCH_NAME = env.BRANCH_NAME ?: sh(
-                        script: 'git branch --show-current || git rev-parse --abbrev-ref HEAD || echo unknown',
-                        returnStdout: true
-                    ).trim()
-
-                    env.GIT_COMMIT_SHORT = sh(
-                        script: 'git rev-parse --short HEAD',
-                        returnStdout: true
-                    ).trim()
+                    env.GIT_BRANCH_NAME = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                    env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                 }
             }
         }
@@ -35,9 +27,8 @@ pipeline {
                 script { env.LAST_STAGE = 'Setup — Trivy Cache' }
                 sh '''
                     if docker image inspect ${TRIVY_IMAGE} > /dev/null 2>&1; then
-                        echo "✅ Trivy already cached — skipping pull."
+                        echo "✅ Trivy already cached"
                     else
-                        echo "📥 Pulling Trivy image..."
                         docker pull ${TRIVY_IMAGE}
                     fi
                 '''
@@ -55,93 +46,74 @@ pipeline {
                 ENV_REDIS_URL        = credentials('REDIS_URL')
             }
             steps {
-                script {
-                    env.LAST_STAGE = 'Build & Deploy'
+                script { env.LAST_STAGE = 'Build & Deploy' }
+                sh '''
+                    echo "DB_ROOT_PASSWORD=${ENV_DB_ROOT_PASSWORD}" >  .env
+                    echo "DB_PASSWORD=${ENV_DB_PASSWORD}"            >> .env
+                    echo "CTFD_SECRET_KEY=${ENV_CTFD_SECRET_KEY}"     >> .env
+                    echo "MARIADB_USER=${ENV_MARIADB_USER}"           >> .env
+                    echo "MARIADB_DATABASE=${ENV_MARIADB_DATABASE}"  >> .env
+                    echo "DATABASE_URL=${ENV_DATABASE_URL}"           >> .env
+                    echo "REDIS_URL=${ENV_REDIS_URL}"                >> .env
 
+                    docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} build --no-cache frontend
+                    docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d frontend
+                '''
+            }
+        }
+
+        stage('Security Scan') {
+            steps {
+                script {
+                    env.LAST_STAGE = 'Security Scan'
+                    
+                    // 1. Génération du rapport JSON
                     sh '''
-                        echo "DB_ROOT_PASSWORD=${ENV_DB_ROOT_PASSWORD}" >  .env
-                        echo "DB_PASSWORD=${ENV_DB_PASSWORD}"           >> .env
-                        echo "CTFD_SECRET_KEY=${ENV_CTFD_SECRET_KEY}"   >> .env
-                        echo "MARIADB_USER=${ENV_MARIADB_USER}"         >> .env
-                        echo "MARIADB_DATABASE=${ENV_MARIADB_DATABASE}" >> .env
-                        echo "DATABASE_URL=${ENV_DATABASE_URL}"         >> .env
-                        echo "REDIS_URL=${ENV_REDIS_URL}"               >> .env
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v "${WORKSPACE}":/workspace \
+                            ${TRIVY_IMAGE} image \
+                            --scanners vuln,secret \
+                            --severity HIGH,CRITICAL \
+                            --format json \
+                            --output /workspace/trivy-report.json \
+                            ${IMAGE_FRONTEND}:latest || true
                     '''
 
-                    def buildExit = sh(
-                        script: '''
-                            set +e
-                            docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} build --no-cache frontend > build-deploy.log 2>&1
-                            BUILD_RC=$?
-                            if [ $BUILD_RC -eq 0 ]; then
-                                docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d frontend >> build-deploy.log 2>&1
-                                BUILD_RC=$?
-                            fi
-                            exit $BUILD_RC
-                        ''',
-                        returnStatus: true
-                    )
+                    // 2. Création du script de parsing
+                    writeFile file: 'trivy-parser.py', text: """
+import json, os
+path = 'trivy-report.json'
+if os.path.exists(path):
+    with open(path) as f:
+        data = json.load(f)
+    crit, high, sec = 0, 0, 0
+    summary = []
+    for res in data.get('Results', []):
+        for v in res.get('Vulnerabilities', []):
+            if v['Severity'] == 'CRITICAL': crit += 1
+            else: high += 1
+            if len(summary) < 5:
+                summary.append(f"• {v['VulnerabilityID']} ({v['PkgName']})")
+        sec += len(res.get('Secrets', []))
+    
+    with open('trivy-summary.txt', 'w') as f:
+        f.write(f"CRITICAL={crit}\\nHIGH={high}\\nSECRETS={sec}\\n")
+        f.write("\\n".join(summary))
+"""
+                    sh 'python3 trivy-parser.py'
 
-                    if (buildExit != 0) {
-                        env.FAILURE_REASON = sh(
-                            script: '''tail -n 30 build-deploy.log | tr '\n' ' ' ''',
-                            returnStdout: true
-                        ).trim()
-                        error("❌ Build/Deploy failed.")
+                    // 3. AFFICHAGE DANS L'INTERFACE JENKINS
+                    if (fileExists('trivy-summary.txt')) {
+                        def reportContent = readFile('trivy-summary.txt')
+                        currentBuild.description = "🛡️ **Sécurité :**\n${reportContent}"
                     }
-                }
-            }
-        }
 
-        stage('Security Scan — Secrets (pre-deploy)') {
-            steps {
-                script {
-                    env.LAST_STAGE = 'Security Scan — Secrets (pre-deploy)'
-
-                    def secretExit = sh(
-                        script: '''
-                            docker run --rm \
-                                -v /var/run/docker.sock:/var/run/docker.sock \
-                                ${TRIVY_IMAGE} image \
-                                --scanners secret \
-                                --severity HIGH,CRITICAL \
-                                --exit-code 1 \
-                                --quiet \
-                                ${IMAGE_FRONTEND}:latest
-                        ''',
-                        returnStatus: true
-                    )
-
-                    if (secretExit != 0) {
-                        env.FAILURE_REASON = "Trivy secret scan found HIGH/CRITICAL secrets."
-                        error("❌ Secret scan failed.")
-                    }
-                }
-            }
-        }
-
-        stage('Security Scan — Container Image') {
-            steps {
-                script {
-                    env.LAST_STAGE = 'Security Scan — Container Image'
-
-                    def scanExit = sh(
-                        script: '''
-                            docker run --rm \
-                                -v /var/run/docker.sock:/var/run/docker.sock \
-                                ${TRIVY_IMAGE} image \
-                                --scanners vuln,secret \
-                                --severity HIGH,CRITICAL \
-                                --exit-code 1 \
-                                --quiet \
-                                ${IMAGE_FRONTEND}:latest
-                        ''',
-                        returnStatus: true
-                    )
-
-                    if (scanExit != 0) {
-                        env.FAILURE_REASON = "Trivy found HIGH/CRITICAL vulnerabilities or secrets."
-                        error("❌ Trivy found HIGH/CRITICAL issues — deployment blocked.")
+                    // 4. Bloquer le déploiement si vulnérabilités trouvées
+                    def scanStatus = sh(script: "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ${TRIVY_IMAGE} image --severity HIGH,CRITICAL --exit-code 1 --quiet ${IMAGE_FRONTEND}:latest", returnStatus: true)
+                    
+                    if (scanStatus != 0) {
+                        error "❌ Trivy a détecté des failles critiques. Build stoppé."
                     }
                 }
             }
@@ -149,23 +121,41 @@ pipeline {
     }
 
     post {
+        success {
+            script {
+                sendTelegramNotification("✅ *SUCCESS*", "Build #${env.BUILD_NUMBER} réussi !")
+            }
+        }
         failure {
             script {
-                def failStage = env.LAST_STAGE ?: 'Unknown'
-                def duration  = currentBuild.durationString?.replace(' and counting', '') ?: 'N/A'
-                def branch    = env.GIT_BRANCH_NAME ?: 'N/A'
-                def commitId  = env.GIT_COMMIT_SHORT ?: 'N/A'
-                def reason    = env.FAILURE_REASON ?: 'No detailed failure reason captured.'
+                sendTelegramNotification("🚨 *FAILED*", "Échec à l'étape : ${env.LAST_STAGE}")
+            }
+        }
+        always {
+            // ARCHIVAGE : Rend le fichier téléchargeable sur la page du build
+            archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
+            
+            sh '''
+                rm -f .env trivy-report.json trivy-summary.txt trivy-parser.py || true
+                docker image prune -f || true
+            '''
+        }
+    }
+}
 
-                try {
-                    def msg = """🚨 *ALERTE JENKINS — BUILD FAILED*
-
+// Fonction pour éviter la duplication de code pour Telegram
+def sendTelegramNotification(status, extra) {
+    def branch = env.GIT_BRANCH_NAME ?: 'N/A'
+    def msg = """${status}
 📦 *Projet :* `${env.JOB_NAME}`
-🔢 *Build :* #${env.BUILD_NUMBER}
-❌ *Statut :* ÉCHEC
-🔴 *Étape :* ${failStage}
-🌿 *Branch :* `${branch}`
-🧾 *Commit :* `${commitId}`
-⏱️ *Durée :* ${duration}
+🌿 *Branche :* `${branch}`
+${extra}
+🔗 [Logs](${env.BUILD_URL}console)"""
 
-📝 *Cause réelle :*
+    withCredentials([
+        string(credentialsId: "${TELEGRAM_CREDS_ID}", variable: 'BOT_TOKEN'),
+        string(credentialsId: "${TELEGRAM_CHAT_ID}",  variable: 'CHAT_ID')
+    ]) {
+        sh "curl -s -X POST https://api.telegram.org/bot${BOT_TOKEN}/sendMessage -d chat_id=${CHAT_ID} -d parse_mode=Markdown -d text='${msg}'"
+    }
+}

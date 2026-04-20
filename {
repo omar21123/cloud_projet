@@ -524,4 +524,184 @@ To https://github.com/omar21123/cloud_projet.git
 [1;30r[27;21H}[2d[?12l[?25h[?25l[2;28r[28;1H
 [1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
 [1;30r[27;21Hif (fileExists('trivy-top-vulns.txt')) {[2d[?12l[?25h[?25l[2;28r[28;1H
-[1;30r[27;25HtopVulns = readFile('trivy-top-vulns.txt').trim(
+[1;30r[27;25HtopVulns = readFile('trivy-top-vulns.txt').trim()[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hif (!topVulns) {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;29HtopVulns = "Not available"[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Hdef trivySection = trivyAvailable ? """[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;1H━━━━━━━━━━━━━━━━━━━━━[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;1H🛡️ *Résultats Trivy*[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;1H━━━━━━━━━━━━━━━━━━━━━[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;1H💣 CRITICAL : *${critical}*[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;1H⚠️ HIGH     : *${high}*[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;1H🔑 Secrets  : *${secrets}*[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;1H📋 *Top vulnérabilités :*[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H[2S[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H[2S[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H[2S[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H[2S[1;30r[2;1H[?12l[?25h[?25l[K[?12l[?25h[?25l[28;51H(B[0;7m[ Nothing was cut ](B[m[?12l[?25h[2d[?25l[28;70H[?12l[?25h[2d[?25l[28;70H[?12l[?25h[2d[?25l[28;70H[?12l[?25h[2d[?25l[28;70H[?12l[?25h[2d[?25l[28;70H[?12l[?25h[2d[?25l[28;70H[?12l[?25h[2d[?25l[28;70H[?12l[?25h[2d[?25l[28;70H[?12l[?25h[2d[?25l[28;70H[?12l[?25h[2d[?25l[28;70H[?12l[?25h[2d[?25l[28d[K[2;17Hdef reason    = env.FAILURE_REASON ?: 'No detailed failure reason captured.'[4;17Htry {[5ddef msg = """🚨 *ALERTE JENKINS — BUILD FAILED*[7d📦 *Projet :* `${env.JOB_NAME}`[8d🔢 *Build :* #${env.BUILD_NUMBER}[9d❌ *Statut :* ÉCHEC[10d🔴 *Étape :* ${failStage}[11d🌿 *Branch :* `${branch}`[12d🧾 *Commit :* `${commitId}`[13d⏱️ *Durée :* ${duration}[15d📝 *Cause réelle :*[?12l[?25h[?25l[28;54H(B[0;7m[ Writing... ](B[m[1;70H(B[0;7m [119G(B[m[28;51H(B[0;7m[ Wrote 171 lines ](B[m[?12l[?25h[15;20H[?25l[28d[J[30d[?12l[?25h[30;1H[?1049l[23;0;0t[?1l>[?2004l[?2004h]0;ubuntu@ip-172-31-95-121: ~/cloud_projet[01;32mubuntu@ip-172-31-95-121[00m:[01;34m~/cloud_projet[00m$ nano Jenkinsfile[7P./run.sh 
+[?2004l[main 8c918a4] update
+ 2 files changed, 296 insertions(+), 120 deletions(-)
+From https://github.com/omar21123/cloud_projet
+ * branch            main       -> FETCH_HEAD
+Current branch main is up to date.
+Enumerating objects: 7, done.
+Counting objects:  14% (1/7)Counting objects:  28% (2/7)Counting objects:  42% (3/7)Counting objects:  57% (4/7)Counting objects:  71% (5/7)Counting objects:  85% (6/7)Counting objects: 100% (7/7)Counting objects: 100% (7/7), done.
+Delta compression using up to 2 threads
+Compressing objects:  25% (1/4)Compressing objects:  50% (2/4)Compressing objects:  75% (3/4)Compressing objects: 100% (4/4)Compressing objects: 100% (4/4), done.
+Writing objects:  25% (1/4)Writing objects:  50% (2/4)Writing objects:  75% (3/4)Writing objects: 100% (4/4)Writing objects: 100% (4/4), 5.23 KiB | 2.61 MiB/s, done.
+Total 4 (delta 2), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas:   0% (0/2)[Kremote: Resolving deltas:  50% (1/2)[Kremote: Resolving deltas: 100% (2/2)[Kremote: Resolving deltas: 100% (2/2), completed with 2 local objects.[K
+To https://github.com/omar21123/cloud_projet.git
+   11f2f7f..8c918a4  main -> main
+[?2004h]0;ubuntu@ip-172-31-95-121: ~/cloud_projet[01;32mubuntu@ip-172-31-95-121[00m:[01;34m~/cloud_projet[00m$ ./run.sh [Knano Jenkinsfile
+[?2004l[?2004h[?1049h[22;0;0t[1;30r(B[m[4l[?7h[39;49m[?1h=[?1h=[?25l[39;49m(B[m[H[2J[28;54H(B[0;7m[ Reading... ](B[m[28;52H(B[0;7m[ Read 171 lines ](B[m[H(B[0;7m  GNU nano 7.2                                           Jenkinsfile                                                    [1;119H(B[m[29d(B[0;7m^G(B[m Help[29;16H(B[0;7m^O(B[m Write Out   (B[0;7m^W(B[m Where Is    (B[0;7m^K(B[m Cut[29;61H(B[0;7m^T(B[m Execute     (B[0;7m^C(B[m Location    (B[0;7mM-U(B[m Undo[106G(B[0;7mM-A(B[m Set Mark[30d(B[0;7m^X(B[m Exit[30;16H(B[0;7m^R(B[m Read File   (B[0;7m^\(B[m Replace     (B[0;7m^U(B[m Paste[61G(B[0;7m^J(B[m Justify     (B[0;7m^/(B[m Go To Line  (B[0;7mM-E(B[m Redo[106G(B[0;7mM-6(B[m Copy[2dpipeline {[3;5Hagent any[5;5Henvironment {[6;9HCOMPOSE_PROJECT   = "cloud_projet"[7;9HCOMPOSE_FILE[27G= "docker-compose.prod.yml"[8;9HIMAGE_FRONTEND    = "cloud_projet-frontend"[9;9HTRIVY_IMAGE[27G= "ghcr.io/aquasecurity/trivy:0.51.4"[10;9HTELEGRAM_CREDS_ID = 'TELEGRAM_TOKEN_ID'[11;9HTELEGRAM_CHAT_ID  = 'TELEGRAM_CHAT_ID'[12;5H}[14dstages {[16;9Hstage('Checkout') {[17;13Hsteps {[18;17Hscript { env.LAST_STAGE = 'Checkout' }[19;17Hcheckout scm[20;17Hscript {[21;21Henv.GIT_BRANCH_NAME = env.BRANCH_NAME ?: sh([22;25Hscript: 'git branch --show-current || git rev-parse --abbrev-ref HEAD || echo unknown',[23;25HreturnStdout: true[24;21H).trim()[26;21Henv.GIT_COMMIT_SHORT = sh([27;25Hscript: 'git rev-parse --short HEAD',[2d[?12l[?25h[?25l[1;70H(B[0;7m*[119G(B[m[2;28r[28;1H
+[1;30r[27;25HreturnStdout: true[K[2d[?12l[?25h[?25l[2;28r[28;1H[2S[1;30r[26;21H).trim()[27;17H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;9H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;9Hstage('Setup — Trivy Cache') {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13Hsteps {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17Hscript { env.LAST_STAGE = 'Setup — Trivy Cache' }[2d[?12l[?25h[?25l[2;28r[28;1H[3S[1;30r[25;17Hsh '''[26dif docker image inspect ${TRIVY_IMAGE} > /dev/null 2>&1; then[27;25Hecho "✅ Trivy already cached — skipping pull."[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Helse[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hecho "📥 Pulling Trivy image..."[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hdocker pull ${TRIVY_IMAGE}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Hfi[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17H'''[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;9H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;9Hstage('Build & Deploy') {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13Henvironment {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17HENV_DB_ROOT_PASSWORD = credentials('DB_ROOT_PASSWORD')[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17HENV_DB_PASSWORD[38G= credentials('DB_PASSWORD')[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17HENV_CTFD_SECRET_KEY  = credentials('CTFD_SECRET_KEY')[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17HENV_MARIADB_USER     = credentials('MARIADB_USER')[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17HENV_MARIADB_DATABASE = credentials('MARIADB_DATABASE')[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17HENV_DATABASE_URL     = credentials('DATABASE_URL')[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17HENV_REDIS_URL[27;38H= credentials('REDIS_URL')[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13Hsteps {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17Hscript {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Henv.LAST_STAGE = 'Build & Deploy'[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Hsh '''[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hecho "DB_ROOT_PASSWORD=${ENV_DB_ROOT_PASSWORD}" >  .env[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hecho "DB_PASSWORD=${ENV_DB_PASSWORD}"[27;73H>> .env[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hecho "CTFD_SECRET_KEY=${ENV_CTFD_SECRET_KEY}"   >> .env[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hecho "MARIADB_USER=${ENV_MARIADB_USER}"[27;73H>> .env[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hecho "MARIADB_DATABASE=${ENV_MARIADB_DATABASE}" >> .env[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hecho "DATABASE_URL=${ENV_DATABASE_URL}"[27;73H>> .env[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hecho "REDIS_URL=${ENV_REDIS_URL}"[27;73H>> .env[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21H'''[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Hdef buildExit = sh([2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hscript: '''[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;29Hset +e[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;29Hdocker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} build --no-cache frontend > build-d(B[0;7m>[2;1H(B[m[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;29HBUILD_RC=$?[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;29Hif [ $BUILD_RC -eq 0 ]; then[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33Hdocker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d frontend >> build-deploy.(B[0;7m>[2;1H(B[m[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33HBUILD_RC=$?[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;29Hfi[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;29Hexit $BUILD_RC[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25H''',[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25HreturnStatus: true[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21H)[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Hif (buildExit != 0) {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Henv.FAILURE_REASON = sh([2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;29Hscript: '''tail -n 30 build-deploy.log | tr '\n' ' ' ''',[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;29HreturnStdout: true[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25H).trim()[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Herror("❌ Build/Deploy failed.")[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;9H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;9Hstage('Security Scan — Secrets (pre-deploy)') {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13Hsteps {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17Hscript {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Henv.LAST_STAGE = 'Security Scan — Secrets (pre-deploy)'[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Hdef secretExit = sh([2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hscript: '''[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;29Hdocker run --rm \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H-v /var/run/docker.sock:/var/run/docker.sock \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H${TRIVY_IMAGE} image \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H--scanners secret \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H--severity HIGH,CRITICAL \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H--exit-code 1 \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H--quiet \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H${IMAGE_FRONTEND}:latest[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25H''',[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25HreturnStatus: true[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21H)[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Hif (secretExit != 0) {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Henv.FAILURE_REASON = "Trivy secret scan found HIGH/CRITICAL secrets."[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Herror("❌ Secret scan failed.")[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;9H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;9Hstage('Security Scan — Container Image') {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13Hsteps {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17Hscript {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Henv.LAST_STAGE = 'Security Scan — Container Image'[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Hdef scanExit = sh([2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Hscript: '''[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;29Hdocker run --rm \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H-v /var/run/docker.sock:/var/run/docker.sock \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H${TRIVY_IMAGE} image \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H--scanners vuln,secret \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H--severity HIGH,CRITICAL \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H--exit-code 1 \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H--quiet \[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;33H${IMAGE_FRONTEND}:latest[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25H''',[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25HreturnStatus: true[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21H)[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Hif (scanExit != 0) {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Henv.FAILURE_REASON = "Trivy found HIGH/CRITICAL vulnerabilities or secrets."[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;25Herror("❌ Trivy found HIGH/CRITICAL issues — deployment blocked.")[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;9H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;5H}[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;5Hpost {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;9Hfailure {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;13Hscript {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17Hdef failStage = env.LAST_STAGE ?: 'Unknown'[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17Hdef duration  = currentBuild.durationString?.replace(' and counting', '') ?: 'N/A'[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17Hdef branch    = env.GIT_BRANCH_NAME ?: 'N/A'[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17Hdef commitId  = env.GIT_COMMIT_SHORT ?: 'N/A'[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17Hdef reason    = env.FAILURE_REASON ?: 'No detailed failure reason captured.'[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;17Htry {[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;21Hdef msg = """🚨 *ALERTE JENKINS — BUILD FAILED*[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[2;1H[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;1H📦 *Projet :* `${env.JOB_NAME}`[2d[?12l[?25h[?25l[2;28r[28;1H
+[1;30r[27;1H🔢 *Build :* #${env.BUILD_NUMBER}[2d[?12l[?25h
