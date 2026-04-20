@@ -188,7 +188,7 @@ const Footer = () => {
               target={"_blank"}
               rel="dofollow noreferrer"
             >
-              boogeyman pro da brahim
+              cloud project team
             </a>
           </span>
         </Bottom>
