@@ -18,12 +18,12 @@ pipeline {
                 checkout scm
                 script {
                     env.GIT_BRANCH_NAME = env.BRANCH_NAME ?: sh(
-                        script: "git branch --show-current || git rev-parse --abbrev-ref HEAD || echo unknown",
+                        script: 'git branch --show-current || git rev-parse --abbrev-ref HEAD || echo unknown',
                         returnStdout: true
                     ).trim()
 
                     env.GIT_COMMIT_SHORT = sh(
-                        script: "git rev-parse --short HEAD",
+                        script: 'git rev-parse --short HEAD',
                         returnStdout: true
                     ).trim()
                 }
@@ -84,7 +84,7 @@ pipeline {
 
                     if (buildExit != 0) {
                         env.FAILURE_REASON = sh(
-                            script: "tail -n 30 build-deploy.log | sed ':a;N;$!ba;s/\\n/ | /g'",
+                            script: '''tail -n 30 build-deploy.log | tr '\n' ' ' ''',
                             returnStdout: true
                         ).trim()
                         error("❌ Build/Deploy failed.")
