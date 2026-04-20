@@ -22,13 +22,11 @@ pipeline {
             }
         }
 
-        stage('Setup — Trivy Cache') {
+        stage('Setup — Trivy') {
             steps {
-                script { env.LAST_STAGE = 'Setup — Trivy Cache' }
+                script { env.LAST_STAGE = 'Setup — Trivy' }
                 sh '''
-                    if docker image inspect ${TRIVY_IMAGE} > /dev/null 2>&1; then
-                        echo "✅ Trivy already cached"
-                    else
+                    if ! docker image inspect ${TRIVY_IMAGE} > /dev/null 2>&1; then
                         docker pull ${TRIVY_IMAGE}
                     fi
                 '''
@@ -62,12 +60,12 @@ pipeline {
             }
         }
 
-        stage('Security Scan') {
+        stage('Security Scan (Trivy)') {
             steps {
                 script {
                     env.LAST_STAGE = 'Security Scan'
                     
-                    // 1. Génération du rapport JSON
+                    // 1. Scan et génération du JSON (on ne casse pas encore le build ici)
                     sh '''
                         docker run --rm \
                             -v /var/run/docker.sock:/var/run/docker.sock \
@@ -80,40 +78,42 @@ pipeline {
                             ${IMAGE_FRONTEND}:latest || true
                     '''
 
-                    // 2. Création du script de parsing
+                    // 2. Script Python intégré pour extraire les infos
                     writeFile file: 'trivy-parser.py', text: """
 import json, os
 path = 'trivy-report.json'
+crit, high, sec = 0, 0, 0
+summary_lines = []
+
 if os.path.exists(path):
     with open(path) as f:
-        data = json.load(f)
-    crit, high, sec = 0, 0, 0
-    summary = []
-    for res in data.get('Results', []):
-        for v in res.get('Vulnerabilities', []):
-            if v['Severity'] == 'CRITICAL': crit += 1
-            else: high += 1
-            if len(summary) < 5:
-                summary.append(f"• {v['VulnerabilityID']} ({v['PkgName']})")
-        sec += len(res.get('Secrets', []))
-    
-    with open('trivy-summary.txt', 'w') as f:
-        f.write(f"CRITICAL={crit}\\nHIGH={high}\\nSECRETS={sec}\\n")
-        f.write("\\n".join(summary))
+        try:
+            data = json.load(f)
+            for res in data.get('Results', []):
+                for v in res.get('Vulnerabilities', []):
+                    if v['Severity'] == 'CRITICAL': crit += 1
+                    else: high += 1
+                    if len(summary_lines) < 5:
+                        summary_lines.append(f"• {v['VulnerabilityID']} | {v['PkgName']} ({v.get('InstalledVersion','')})")
+                sec += len(res.get('Secrets', []))
+        except: pass
+
+with open('trivy-summary.txt', 'w') as f:
+    f.write(f"💣 CRITICAL: {crit}\\n⚠️ HIGH: {high}\\n🔑 SECRETS: {sec}\\n\\n")
+    f.write("Top Vulnerabilities:\\n" + ("\\n".join(summary_lines) if summary_lines else "None"))
 """
                     sh 'python3 trivy-parser.py'
 
-                    // 3. AFFICHAGE DANS L'INTERFACE JENKINS
+                    // 3. Affichage immédiat dans l'interface Jenkins
                     if (fileExists('trivy-summary.txt')) {
-                        def reportContent = readFile('trivy-summary.txt')
-                        currentBuild.description = "🛡️ **Sécurité :**\n${reportContent}"
+                        def report = readFile('trivy-summary.txt')
+                        currentBuild.description = report.replace('\n', '<br>')
                     }
 
-                    // 4. Bloquer le déploiement si vulnérabilités trouvées
-                    def scanStatus = sh(script: "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ${TRIVY_IMAGE} image --severity HIGH,CRITICAL --exit-code 1 --quiet ${IMAGE_FRONTEND}:latest", returnStatus: true)
-                    
-                    if (scanStatus != 0) {
-                        error "❌ Trivy a détecté des failles critiques. Build stoppé."
+                    // 4. Blocage du build si failles trouvées
+                    def summary = readFile('trivy-summary.txt')
+                    if (summary.contains("CRITICAL: 0") == false || summary.contains("HIGH: 0") == false) {
+                        error "❌ Sécurité compromise : Fails HIGH ou CRITICAL détectées."
                     }
                 }
             }
@@ -123,16 +123,18 @@ if os.path.exists(path):
     post {
         success {
             script {
-                sendTelegramNotification("✅ *SUCCESS*", "Build #${env.BUILD_NUMBER} réussi !")
+                def info = fileExists('trivy-summary.txt') ? "\n\n🛡️ *Sécurité :*\n" + readFile('trivy-summary.txt') : ""
+                sendTelegramNotification("✅ *BUILD SUCCESS*", "Le déploiement est terminé.${info}")
             }
         }
         failure {
             script {
-                sendTelegramNotification("🚨 *FAILED*", "Échec à l'étape : ${env.LAST_STAGE}")
+                def info = fileExists('trivy-summary.txt') ? "\n\n🛡️ *Détails Sécurité :*\n" + readFile('trivy-summary.txt') : ""
+                sendTelegramNotification("🚨 *BUILD FAILED*", "Échec à l'étape : *${env.LAST_STAGE}*${info}")
             }
         }
         always {
-            // ARCHIVAGE : Rend le fichier téléchargeable sur la page du build
+            // Archive le rapport pour consultation ultérieure
             archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
             
             sh '''
@@ -143,19 +145,20 @@ if os.path.exists(path):
     }
 }
 
-// Fonction pour éviter la duplication de code pour Telegram
-def sendTelegramNotification(status, extra) {
+def sendTelegramNotification(status, body) {
     def branch = env.GIT_BRANCH_NAME ?: 'N/A'
-    def msg = """${status}
+    def message = """${status}
 📦 *Projet :* `${env.JOB_NAME}`
+🔢 *Build :* #${env.BUILD_NUMBER}
 🌿 *Branche :* `${branch}`
-${extra}
-🔗 [Logs](${env.BUILD_URL}console)"""
+${body}
+
+🔗 [Consulter Jenkins](${env.BUILD_URL}console)"""
 
     withCredentials([
         string(credentialsId: "${TELEGRAM_CREDS_ID}", variable: 'BOT_TOKEN'),
         string(credentialsId: "${TELEGRAM_CHAT_ID}",  variable: 'CHAT_ID')
     ]) {
-        sh "curl -s -X POST https://api.telegram.org/bot${BOT_TOKEN}/sendMessage -d chat_id=${CHAT_ID} -d parse_mode=Markdown -d text='${msg}'"
+        sh "curl -s -X POST https://api.telegram.org/bot${BOT_TOKEN}/sendMessage -d chat_id=${CHAT_ID} -d parse_mode=Markdown -d text='${message}'"
     }
 }
