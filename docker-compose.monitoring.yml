@@ -60,4 +60,4 @@ volumes:
 
 networks:
   cloud_projet_secops-net:
-    external: true
+    external: false
