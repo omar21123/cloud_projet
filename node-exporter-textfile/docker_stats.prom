@@ -1,0 +1,52 @@
+# HELP docker_container_cpu_percent CPU usage percent
+# TYPE docker_container_cpu_percent gauge
+# HELP docker_container_mem_usage_bytes Memory usage in bytes
+# TYPE docker_container_mem_usage_bytes gauge
+# HELP docker_container_mem_limit_bytes Memory limit in bytes
+# TYPE docker_container_mem_limit_bytes gauge
+# HELP docker_container_mem_percent Memory usage percent
+# TYPE docker_container_mem_percent gauge
+docker_container_cpu_percent{container="monitoring-prometheus"} 0.00
+docker_container_mem_usage_bytes{container="monitoring-prometheus"} 51998884
+docker_container_mem_limit_bytes{container="monitoring-prometheus"} 4032974291
+docker_container_mem_percent{container="monitoring-prometheus"} 1.29
+docker_container_cpu_percent{container="monitoring-grafana"} 2.02
+docker_container_mem_usage_bytes{container="monitoring-grafana"} 323590554
+docker_container_mem_limit_bytes{container="monitoring-grafana"} 4032974291
+docker_container_mem_percent{container="monitoring-grafana"} 8.02
+docker_container_cpu_percent{container="monitoring-node-exporter"} 0.00
+docker_container_mem_usage_bytes{container="monitoring-node-exporter"} 8626635
+docker_container_mem_limit_bytes{container="monitoring-node-exporter"} 4032974291
+docker_container_mem_percent{container="monitoring-node-exporter"} 0.21
+docker_container_cpu_percent{container="monitoring-cadvisor"} 0.00
+docker_container_mem_usage_bytes{container="monitoring-cadvisor"} 19021169
+docker_container_mem_limit_bytes{container="monitoring-cadvisor"} 4032974291
+docker_container_mem_percent{container="monitoring-cadvisor"} 0.47
+docker_container_cpu_percent{container="secops-frontend"} 0.00
+docker_container_mem_usage_bytes{container="secops-frontend"} 2073035
+docker_container_mem_limit_bytes{container="secops-frontend"} 4032974291
+docker_container_mem_percent{container="secops-frontend"} 0.05
+docker_container_cpu_percent{container="secops-gateway"} 0.00
+docker_container_mem_usage_bytes{container="secops-gateway"} 4968153
+docker_container_mem_limit_bytes{container="secops-gateway"} 4032974291
+docker_container_mem_percent{container="secops-gateway"} 0.12
+docker_container_cpu_percent{container="secops-ctfd-nginx"} 0.00
+docker_container_mem_usage_bytes{container="secops-ctfd-nginx"} 8315208
+docker_container_mem_limit_bytes{container="secops-ctfd-nginx"} 4032974291
+docker_container_mem_percent{container="secops-ctfd-nginx"} 0.21
+docker_container_cpu_percent{container="secops-ctfd"} 0.06
+docker_container_mem_usage_bytes{container="secops-ctfd"} 152777523
+docker_container_mem_limit_bytes{container="secops-ctfd"} 4032974291
+docker_container_mem_percent{container="secops-ctfd"} 3.79
+docker_container_cpu_percent{container="secops-redis"} 1.05
+docker_container_mem_usage_bytes{container="secops-redis"} 8429502
+docker_container_mem_limit_bytes{container="secops-redis"} 4032974291
+docker_container_mem_percent{container="secops-redis"} 0.21
+docker_container_cpu_percent{container="secops-db"} 0.01
+docker_container_mem_usage_bytes{container="secops-db"} 109261619
+docker_container_mem_limit_bytes{container="secops-db"} 4032974291
+docker_container_mem_percent{container="secops-db"} 2.71
+docker_container_cpu_percent{container="jenkins"} 0.50
+docker_container_mem_usage_bytes{container="jenkins"} 644559667
+docker_container_mem_limit_bytes{container="jenkins"} 4032974291
+docker_container_mem_percent{container="jenkins"} 15.98

@@ -1,16 +1,14 @@
-version: '3.8'
-
 services:
   prometheus:
     image: prom/prometheus:latest
     container_name: monitoring-prometheus
     restart: unless-stopped
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
     networks:
       - cloud_projet_secops-net
 
@@ -23,23 +21,25 @@ services:
       - /sys:/host/sys:ro
       - /:/rootfs:ro
     command:
-      - '--path.procfs=/host/proc'
-      - '--path.rootfs=/rootfs'
-      - '--path.sysfs=/host/sys'
+      - --path.procfs=/host/proc
+      - --path.rootfs=/rootfs
+      - --path.sysfs=/host/sys
     networks:
       - cloud_projet_secops-net
 
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.47.0 # Version stable pour Linux
-    container_name: monitoring-cadvisor
-    restart: unless-stopped
+  telegraf:
+    image: telegraf:latest
+    container_name: monitoring-telegraf
+    user: "0:0"
+    group_add:
+      - "${DOCKER_GID}"
     privileged: true
+    restart: unless-stopped
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+    ports:
+      - "9273:9273"
     networks:
       - cloud_projet_secops-net
 
@@ -60,4 +60,4 @@ volumes:
 
 networks:
   cloud_projet_secops-net:
-    external: false
+    external: true
