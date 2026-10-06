@@ -1,17 +1,36 @@
+<div align="center">
+
 # AWS DevSecOps & Monitoring Platform
 
-A containerized cloud platform that combines a React website, a CTFd challenge environment, a Jenkins delivery pipeline, security scanning, and infrastructure monitoring. The production stack is designed to run on an Ubuntu-based AWS host and is exposed through Cloudflare and an Nginx reverse proxy.
+**A containerized cloud platform with automated delivery, security gates, and full-stack observability.**
 
-## Project goals
+[![AWS](https://img.shields.io/badge/AWS-Cloud-232F3E?logo=amazonwebservices&logoColor=white)](https://aws.amazon.com/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Jenkins](https://img.shields.io/badge/Jenkins-CI%2FCD-D24939?logo=jenkins&logoColor=white)](https://www.jenkins.io/)
+[![Trivy](https://img.shields.io/badge/Trivy-Security-1904DA?logo=aqua&logoColor=white)](https://trivy.dev/)
+[![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/)
+[![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800?logo=grafana&logoColor=white)](https://grafana.com/)
 
-- Package the application and its supporting services with Docker Compose.
-- Automate frontend delivery with Jenkins.
-- Scan container images for vulnerabilities and exposed secrets with Trivy.
-- Run dynamic web security checks with OWASP ZAP.
-- Collect host and container metrics with Prometheus, Node Exporter, and Telegraf.
-- Visualize operational metrics in Grafana.
-- Keep databases and caches isolated from the public network.
-- Send pipeline success and failure notifications through Telegram.
+React · CTFd · Jenkins · Trivy · OWASP ZAP · Prometheus · Grafana · Cloudflare
+
+</div>
+
+---
+
+This educational team project demonstrates an end-to-end DevSecOps environment running on an Ubuntu-based AWS host. Cloudflare and Nginx expose a React website, a CTFd platform, and Jenkins, while Docker Compose manages the application, data, security, and monitoring services.
+
+### Explore the project
+
+[Architecture](#architecture) · [CI/CD pipeline](#cicd-pipeline) · [Monitoring](#monitoring-flow) · [Security](#security-design) · [Deployment](#deployment)
+
+## Key capabilities
+
+| Delivery | Security | Observability | Platform |
+| --- | --- | --- | --- |
+| Jenkins pipeline | Trivy image and secret scanning | Prometheus metrics | AWS-hosted Docker stack |
+| Docker Compose deployment | OWASP ZAP baseline testing | Grafana dashboards | Cloudflare and Nginx routing |
+| Telegram build notifications | Isolated data network | Node Exporter host metrics | React and CTFd services |
+| Reproducible container builds | Jenkins-managed credentials | Telegraf container metrics | MariaDB and Redis persistence |
 
 ## Architecture
 
