@@ -1,6 +1,6 @@
 services:
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.5.5
     container_name: monitoring-prometheus
     restart: unless-stopped
     volumes:
@@ -9,11 +9,13 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
+    security_opt:
+      - no-new-privileges:true
     networks:
       - cloud_projet_secops-net
 
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1.12.1
     container_name: monitoring-node-exporter
     restart: unless-stopped
     volumes:
@@ -24,33 +26,33 @@ services:
       - --path.procfs=/host/proc
       - --path.rootfs=/rootfs
       - --path.sysfs=/host/sys
+    security_opt:
+      - no-new-privileges:true
     networks:
       - cloud_projet_secops-net
 
   telegraf:
-    image: telegraf:latest
+    image: telegraf:1.40-alpine
     container_name: monitoring-telegraf
-    user: "0:0"
     group_add:
-      - "${DOCKER_GID}"
-    privileged: true
+      - "${DOCKER_GID:-999}"
     restart: unless-stopped
     volumes:
       - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
-      - /var/run/docker.sock:/var/run/docker.sock:rw
-    ports:
-      - "9273:9273"
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    security_opt:
+      - no-new-privileges:true
     networks:
       - cloud_projet_secops-net
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.4.12
     container_name: monitoring-grafana
     restart: unless-stopped
-    ports:
-      - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+    security_opt:
+      - no-new-privileges:true
     networks:
       - cloud_projet_secops-net
 

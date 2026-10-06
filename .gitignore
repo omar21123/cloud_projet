@@ -5,5 +5,14 @@ challenges/
 .data/
 mysql_data/
 .env
+.env.*
+!.env.example
 backup.sh
 .github/
+
+# Local security reports and test-only secret fixtures
+frontend/aws_access.txt
+Jenkinsfile.old
+trivy-*.json
+trivy-*.env
+zap-reports/

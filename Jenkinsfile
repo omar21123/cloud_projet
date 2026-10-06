@@ -5,7 +5,7 @@ pipeline {
         COMPOSE_PROJECT   = "cloud_projet"
         COMPOSE_FILE      = "docker-compose.prod.yml"
         IMAGE_FRONTEND    = "cloud_projet-frontend"
-        TRIVY_IMAGE       = "ghcr.io/aquasecurity/trivy:0.51.4"
+        TRIVY_IMAGE       = "ghcr.io/aquasecurity/trivy:0.74.0"
         ZAP_IMAGE         = "zaproxy/zap-stable"
         ZAP_TARGET        = "https://project-cloud.online"
         TELEGRAM_CREDS_ID = 'TELEGRAM_TOKEN_ID'
@@ -46,7 +46,7 @@ pipeline {
             }
         }
 
-        stage('Build & Deploy') {
+        stage('Build') {
             environment {
                 ENV_DB_ROOT_PASSWORD = credentials('DB_ROOT_PASSWORD')
                 ENV_DB_PASSWORD      = credentials('DB_PASSWORD')
@@ -57,8 +57,10 @@ pipeline {
                 ENV_REDIS_URL        = credentials('REDIS_URL')
             }
             steps {
-                script { env.LAST_STAGE = 'Build & Deploy' }
+                script { env.LAST_STAGE = 'Build' }
                 sh '''
+                    set +x
+                    umask 077
                     echo "DB_ROOT_PASSWORD=${ENV_DB_ROOT_PASSWORD}" > .env
                     echo "DB_PASSWORD=${ENV_DB_PASSWORD}" >> .env
                     echo "CTFD_SECRET_KEY=${ENV_CTFD_SECRET_KEY}" >> .env
@@ -68,7 +70,6 @@ pipeline {
                     echo "REDIS_URL=${ENV_REDIS_URL}" >> .env
 
                     docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} build --no-cache frontend
-                    docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d frontend
                 '''
             }
         }
@@ -202,6 +203,15 @@ print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
             }
         }
 
+        stage('Deploy') {
+            steps {
+                script { env.LAST_STAGE = 'Deploy' }
+                sh '''
+                    docker compose -p ${COMPOSE_PROJECT} -f ${COMPOSE_FILE} up -d frontend
+                '''
+            }
+        }
+
         stage('Security Scan — OWASP ZAP') {
             steps {
                 script {
@@ -219,7 +229,8 @@ print(f"[Trivy Parser] CRITICAL={critical} HIGH={high} SECRETS={secrets}")
                             -J zap-report.json \
                             -r zap-report.html \
                             -w zap-report.md \
-                            -m 3 || true
+                            -m 3 \
+                            -I
 
                         echo "=== ZAP scan finished ==="
                         ls -lah zap-reports || true
@@ -315,6 +326,8 @@ Consulte les logs Jenkins pour voir les résultats :
         }
 
         always {
+            archiveArtifacts artifacts: 'trivy-vuln-report.json,trivy-secret-pre.json,trivy-summary.env,zap-reports/**', allowEmptyArchive: true
+
             sh '''
                 rm -f .env \
                       trivy-vuln-report.json \

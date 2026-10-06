@@ -1,13 +1,13 @@
 # STAGE 1: The Builder (Compiles the code)
-FROM node:18-alpine as build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --legacy-peer-deps
+RUN npm ci --legacy-peer-deps
 COPY . .
 RUN npm run build
 
 # STAGE 2: The Server (Wear the Suit)
-FROM nginx:1.10.3
+FROM nginx:1.30.5-alpine
 # Copy the compiled assets from Stage 1
 COPY --from=build /app/build /usr/share/nginx/html
 

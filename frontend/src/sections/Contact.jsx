@@ -409,9 +409,9 @@ const Contact = () => {
                 <img src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop" alt="Cyberpunk Aesthetic" />
                 
                 <SocialsContainer>
-                <SocialButton href="https://www.linkedin.com/company/secops-ensaf/" target="_blank">
+                <SocialButton href="https://www.linkedin.com/company/secops-ensaf/" target="_blank" rel="noopener noreferrer">
                 <SocialIcon type="linkedin" /></SocialButton>
-                <SocialButton href="https://www.instagram.com/sec_ops.club/" target="_blank">
+                <SocialButton href="https://www.instagram.com/sec_ops.club/" target="_blank" rel="noopener noreferrer">
                 <SocialIcon type="instagram" /></SocialButton>
                 </SocialsContainer>
             </ImageContainer>
@@ -434,7 +434,7 @@ const Contact = () => {
                     <ContactLink href="mailto:contact@Sec.Ops club.club">
                         <ArrowIcon /> contact@Sec.Ops club.club
                     </ContactLink>
-                    <ContactLink href="https://maps.app.goo.gl/r85VgJQPKtg7uoX68" target="_blank">
+                    <ContactLink href="https://maps.app.goo.gl/r85VgJQPKtg7uoX68" target="_blank" rel="noopener noreferrer">
                         <ArrowIcon /> ENSA Fes, Morocco
                     </ContactLink>
                 </LinkList>

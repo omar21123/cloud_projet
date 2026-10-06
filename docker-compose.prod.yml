@@ -1,6 +1,6 @@
 services:
   gateway:
-    image: nginx:stable-alpine
+    image: nginx:1.30.5-alpine
     container_name: secops-gateway
     restart: unless-stopped
     ports:
@@ -14,6 +14,8 @@ services:
       - frontend
       - ctfd-nginx
       - jenkins
+    security_opt:
+      - no-new-privileges:true
     networks:
       - secops-net
 
@@ -22,6 +24,8 @@ services:
       context: ./frontend
     container_name: secops-frontend
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     networks:
       - secops-net
 
@@ -38,18 +42,22 @@ services:
     depends_on:
       - db
       - cache
+    security_opt:
+      - no-new-privileges:true
     networks:
       - secops-net
       - internal
 
   ctfd-nginx:
-    image: nginx:stable
+    image: nginx:1.30.5-alpine
     container_name: secops-ctfd-nginx
     restart: unless-stopped
     volumes:
       - ./CTFd/conf/nginx/http.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - ctfd
+    security_opt:
+      - no-new-privileges:true
     networks:
       - secops-net
 
@@ -64,6 +72,8 @@ services:
       - MARIADB_DATABASE=ctfd
     volumes:
       - dbdata:/var/lib/mysql
+    security_opt:
+      - no-new-privileges:true
     networks:
       - internal
 
@@ -73,6 +83,8 @@ services:
     restart: unless-stopped
     volumes:
       - redisdata:/data
+    security_opt:
+      - no-new-privileges:true
     networks:
       - internal
 
@@ -80,17 +92,17 @@ services:
     build:
       context: ./jenkins-docker
     container_name: jenkins
-    user: root
     restart: unless-stopped
+    group_add:
+      - "${DOCKER_GID:-999}"
     environment:
       - JENKINS_OPTS=--prefix=/jenkins
       - JAVA_OPTS=-Xms256m -Xmx768m
-    ports:
-      - "50000:50000"
     volumes:
       - jenkins_home:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /home/ubuntu/cloud_projet:/workspace/cloud_projet
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+    security_opt:
+      - no-new-privileges:true
     networks:
       - secops-net
 

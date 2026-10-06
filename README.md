@@ -157,19 +157,19 @@ Docker container data -> Telegraf --------/
 - MariaDB and Redis are attached to an internal Docker network.
 - Production secrets are retrieved from Jenkins Credentials and are not meant to be committed.
 - Trivy checks the built image for vulnerabilities and exposed secrets.
+- The image security gates run before the frontend deployment stage.
 - OWASP ZAP performs a dynamic baseline assessment of the deployed site.
 - Read-only volume mounts are used for configuration files and host metric paths where supported.
-- Temporary scan reports and generated environment files are removed after each Jenkins run.
+- Scan reports are archived in Jenkins before temporary files are removed.
+- Production container images are pinned to explicit maintained versions.
 
 ### Production hardening opportunities
 
 - Put Jenkins and Grafana behind Cloudflare Access, a VPN, or another identity-aware access layer.
-- Pin container images by version or digest instead of using `latest`.
 - Replace direct Docker socket access with a more restricted build and monitoring mechanism.
 - Run application containers with non-root users and read-only filesystems where possible.
 - Add automated dependency checks, software bills of materials, image signing, and centralized log collection.
-- Move every required security gate before deployment and add a rollback strategy.
-- Store generated security reports as protected Jenkins artifacts.
+- Add a deployment rollback strategy and use a dedicated test environment for pre-production DAST.
 
 ## Repository structure
 
